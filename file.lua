@@ -417,7 +417,7 @@ sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
     if val == "UPDATE" then
         if KeepInfYield and not TeleportCheck and queueteleport then
             TeleportCheck = true
-            queueteleport("loadstring(game:HttpGet('https://pastebin.com/raw/PdEfeMt6'))()")
+            queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua")
         end
         TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId)
         return
@@ -496,7 +496,7 @@ function checkAndHopServers()
     if #servers > 0 then
         -- Queue the script to run after teleport
         if KeepInfYield and queueteleport then
-            queueteleport("loadstring(game:HttpGet('https://pastebin.com/raw/PdEfeMt6'))()")
+            queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua)
         end
         
         -- Try servers in order from most players to least
