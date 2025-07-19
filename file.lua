@@ -173,7 +173,7 @@ local function executeActivate()
     end
     
     pcall(function()
-        loadstring(game:HttpGet('https://pastebin.com/raw/wd1vGZVr'))()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
     end)
 end
 
