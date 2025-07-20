@@ -36,18 +36,34 @@ local function setupTeleport()
     end
 end
 
+-- Fix anti-AFK with proper error handling
 local GC = getconnections or get_signal_cons
 if GC then
-    for _, conn in pairs(GC(LP.Idled)) do
-        if conn.Disable then conn:Disable()
-        elseif conn.Disconnect then conn:Disconnect() end
+    local success, connections = pcall(function()
+        return GC(LP.Idled)
+    end)
+    if success and connections then
+        for _, conn in pairs(connections) do
+            if conn.Disable then 
+                pcall(function() conn:Disable() end)
+            elseif conn.Disconnect then 
+                pcall(function() conn:Disconnect() end)
+            end
+        end
     end
 else
-    local vu = cloneref(game:GetService("VirtualUser"))
-    LP.Idled:Connect(function()
-        vu:CaptureController()
-        vu:ClickButton2(Vector2.new())
+    -- Fallback anti-AFK
+    local success, vu = pcall(function()
+        return game:GetService("VirtualUser")
     end)
+    if success and vu then
+        LP.Idled:Connect(function()
+            pcall(function()
+                vu:CaptureController()
+                vu:ClickButton2(Vector2.new())
+            end)
+        end)
+    end
 end
 
 task.defer(function()
@@ -85,11 +101,14 @@ local PlaceId           = game.PlaceId
 --// QUEUE ON TELEPORT SETUP
 local KeepInfYield  = true
 local TeleportCheck = false
-local queueteleport = queue_on_teleport or syn and syn.queue_on_teleport or fluxus and fluxus.queue_on_teleport
+local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+
 LP.OnTeleport:Connect(function()
     if KeepInfYield and not TeleportCheck and queueteleport then
         TeleportCheck = true
-        queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+        pcall(function()
+            queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+        end)
     end
 end)
 
@@ -371,41 +390,43 @@ local function processChatCommand(msg)
 end
 
 local function setupTextChatCommandHandler()
-    if TextChatService and TextChatService.MessageReceived then
-        TextChatService.MessageReceived:Connect(function(txtMsg)
-            local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
-            if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
-                local m = txtMsg.Text:lower()
-                if m == ".activate" then
-                    executeActivate()
-                elseif m == ".update" then
-                    sharedRevenge.Value = "UPDATE"
-                else
-                    processChatCommand(txtMsg.Text)
+    pcall(function()
+        if TextChatService and TextChatService.MessageReceived then
+            TextChatService.MessageReceived:Connect(function(txtMsg)
+                local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
+                if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
+                    local m = txtMsg.Text:lower()
+                    if m == ".activate" then
+                        executeActivate()
+                    elseif m == ".update" then
+                        sharedRevenge.Value = "UPDATE"
+                    else
+                        processChatCommand(txtMsg.Text)
+                    end
+                end
+            end)
+        else
+            local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents",10)
+            if events then
+                local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
+                if msgEvent then
+                    msgEvent.OnClientEvent:Connect(function(data)
+                        local speaker = Players:FindFirstChild(data.FromSpeaker)
+                        if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
+                            local m = data.Message:lower()
+                            if m == ".activate" then
+                                executeActivate()
+                            elseif m == ".update" then
+                                sharedRevenge.Value = "UPDATE"
+                            else
+                                processChatCommand(data.Message)
+                            end
+                        end
+                    end)
                 end
             end
-        end)
-    else
-        local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents",10)
-        if events then
-            local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
-            if msgEvent then
-                msgEvent.OnClientEvent:Connect(function(data)
-                    local speaker = Players:FindFirstChild(data.FromSpeaker)
-                    if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
-                        local m = data.Message:lower()
-                        if m == ".activate" then
-                            executeActivate()
-                        elseif m == ".update" then
-                            sharedRevenge.Value = "UPDATE"
-                        else
-                            processChatCommand(data.Message)
-                        end
-                    end
-                end)
-            end
         end
-    end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -417,7 +438,9 @@ sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
     if val == "UPDATE" then
         if KeepInfYield and not TeleportCheck and queueteleport then
             TeleportCheck = true
-            queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua")
+            pcall(function()
+                queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+            end)
         end
         TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId)
         return
@@ -460,20 +483,19 @@ function checkAndHopServers()
     isHopping = true
     
     local servers = {}
-    local success, errorMsg = pcall(function()
-        local req = game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
-        return req
+    local success, result = pcall(function()
+        return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
     end)
     
     if not success then 
-        warn("Failed to fetch servers:", errorMsg)
+        warn("Failed to fetch servers:", result)
         isHopping = false
         return 
     end
     
     local body
     pcall(function()
-        body = HttpService:JSONDecode(success and errorMsg or "")
+        body = HttpService:JSONDecode(result)
     end)
     
     if body and body.data then
@@ -496,7 +518,9 @@ function checkAndHopServers()
     if #servers > 0 then
         -- Queue the script to run after teleport
         if KeepInfYield and queueteleport then
-            queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua)
+            pcall(function()
+                queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+            end)
         end
         
         -- Try servers in order from most players to least
@@ -647,10 +671,22 @@ end
 --------------------------------------------------------------------------------
 -- DAMAGE & KILLLOOP (+ one‐shot)
 --------------------------------------------------------------------------------
+-- Check if firetouchinterest exists before using it
+local firetouchinterest = firetouchinterest
+if not firetouchinterest then
+    -- Fallback function if firetouchinterest doesn't exist
+    firetouchinterest = function(a, b, state)
+        -- This won't do anything but prevents the error
+        warn("firetouchinterest not available")
+    end
+end
+
 local function FT(a,b)
     for _=1,FT_TIMES do
-        firetouchinterest(a,b,0)
-        firetouchinterest(a,b,1)
+        pcall(function()
+            firetouchinterest(a,b,0)
+            firetouchinterest(a,b,1)
+        end)
     end
 end
 
@@ -755,22 +791,24 @@ local function handleSecondaryUserKilled(killerName,victimName)
 end
 
 local function SetupKillLogger()
-    local evt = ReplicatedStorage:FindFirstChild("APlayerWasKilled")
-    if not evt then return end
-    evt.OnClientEvent:Connect(function(killerName,victimName,authCode)
-        if authCode~="Anrt4tiEx354xpl5oitzs" then return end
-        if SECONDARY_MAIN_USERS[victimName] then
-            handleSecondaryUserKilled(killerName,victimName)
-        end
-        if killerName
-        and not MAIN_USERS[killerName]
-        and not SECONDARY_MAIN_USERS[killerName]
-        and not SIGMA_USERS[killerName] then
-            local kp=Players:FindFirstChild(killerName)
-            if MAIN_USERS[victimName] or victimName==LP.Name then
-                addTemporaryTarget(kp)
+    pcall(function()
+        local evt = ReplicatedStorage:FindFirstChild("APlayerWasKilled")
+        if not evt then return end
+        evt.OnClientEvent:Connect(function(killerName,victimName,authCode)
+            if authCode~="Anrt4tiEx354xpl5oitzs" then return end
+            if SECONDARY_MAIN_USERS[victimName] then
+                handleSecondaryUserKilled(killerName,victimName)
             end
-        end
+            if killerName
+            and not MAIN_USERS[killerName]
+            and not SECONDARY_MAIN_USERS[killerName]
+            and not SIGMA_USERS[killerName] then
+                local kp=Players:FindFirstChild(killerName)
+                if MAIN_USERS[victimName] or victimName==LP.Name then
+                    addTemporaryTarget(kp)
+                end
+            end
+        end)
     end)
 end
 
@@ -818,58 +856,60 @@ end
 -- CHARACTER SETUP
 --------------------------------------------------------------------------------
 local function SetupChar(c)
-    c:WaitForChild("HumanoidRootPart",10)
-    local h = c:FindFirstChildOfClass("Humanoid")
-    if not h then return end
-    if SECONDARY_MAIN_USERS[LP.Name] and killTracker[LP.Name] then
-        killTracker[LP.Name].lastRespawn = os.time()
-    end
-    
-    -- Setup teleport immediately for main users (ALWAYS ACTIVE)
-    setupTeleport()
-    
-    -- Immediate equip attempt (ALWAYS ACTIVE)
-    forceEquip()
-    
-    -- Auto-activate after character loads (if enabled)
-    if autoactivate and not isActivated then
+    pcall(function()
+        c:WaitForChild("HumanoidRootPart",10)
+        local h = c:FindFirstChildOfClass("Humanoid")
+        if not h then return end
+        if SECONDARY_MAIN_USERS[LP.Name] and killTracker[LP.Name] then
+            killTracker[LP.Name].lastRespawn = os.time()
+        end
+        
+        -- Setup teleport immediately for main users (ALWAYS ACTIVE)
+        setupTeleport()
+        
+        -- Immediate equip attempt (ALWAYS ACTIVE)
+        forceEquip()
+        
+        -- Auto-activate after character loads (if enabled)
+        if autoactivate and not isActivated then
+            task.spawn(function()
+                task.wait(1) -- Wait 1 second after character loads
+                executeActivate()
+            end)
+        end
+        
+        -- Check if sword is equipped after 5 seconds
         task.spawn(function()
-            task.wait(1) -- Wait 1 second after character loads
-            executeActivate()
+            task.wait(5)
+            if c and c.Parent and not c:FindFirstChild("Sword") then
+                -- Reset character if no sword equipped
+                if h and h.Parent then
+                    h.Health = 0
+                end
+            end
         end)
-    end
-    
-    -- Check if sword is equipped after 5 seconds
-    task.spawn(function()
-        task.wait(5)
-        if not c:FindFirstChild("Sword") then
-            -- Reset character if no sword equipped
-            h.Health = 0
+        
+        for _, t in ipairs(c:GetChildren()) do
+            if t:IsA("Tool") then CreateBoxReach(t) end
+        end
+        
+        -- Only setup killloop if old script is active
+        if oldScriptActive then
+            if CN then CN:Disconnect() end
+            CN = RunService.Heartbeat:Connect(HB)
+            SetupDamageTracker(h)
         end
     end)
-    
-    for _, t in ipairs(c:GetChildren()) do
-        if t:IsA("Tool") then CreateBoxReach(t) end
-    end
-    
-    -- Only setup killloop if old script is active
-    if oldScriptActive then
-        if CN then CN:Disconnect() end
-        CN = RunService.Heartbeat:Connect(HB)
-        SetupDamageTracker(h)
-    end
 end
 
 -- After respawn immediate equip
 LP.CharacterAdded:Connect(function(char)
-    char:WaitForChild("Humanoid")
-    char:WaitForChild("HumanoidRootPart") -- protection against loading lag
-    forceEquip()
+    pcall(function()
+        char:WaitForChild("Humanoid")
+        char:WaitForChild("HumanoidRootPart") -- protection against loading lag
+        forceEquip()
+    end)
 end)
-
---------------------------------------------------------------------------------
--- ANTI-AFK (DUPLICATE REMOVED)
---------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
 -- INITIALIZATION
@@ -908,15 +948,17 @@ Players.PlayerAdded:Connect(function(pl)
         -- Delayed tool count check
         task.spawn(function()
             task.wait(5)
-            checkPlayerToolCount(pl)
+            if pl and pl.Parent then
+                checkPlayerToolCount(pl)
+            end
         end)
     end
 end)
 
 -- Don't remove permanent targets when they leave
 Players.PlayerRemoving:Connect(function(pl)
-    killTracker[pl.Name] = nil
+    if killTracker[pl.Name] then
+        killTracker[pl.Name] = nil
+    end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-
--- AUTO ACTIVATE REMOVED FROM BOTTOM (Now handled in SetupChar)
