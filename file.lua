@@ -118,7 +118,7 @@ local MAIN_USERS = {
     ["Cubot_Nova2"] = true,
     ["Cubot_Nova3"] = true,
     ["cubot_nova4"] = true,
-    ["Cubot_Nova1"] = true,
+    ["Cub0t_01"] = true,
 }
 local SIGMA_USERS = {
     ["FlexFightPro68"]   = true,
@@ -741,7 +741,7 @@ end
 --------------------------------------------------------------------------------
 local teleportTargets = {
     ["Cubot_Nova3"]           = CFrame.new(7152,4405,4707),
-    ["Cubot_Nova1"]          = CFrame.new(7122,4505,4719),
+    ["Cub0t_01"]          = CFrame.new(7122,4505,4719),
     ["cubot_nova4"]          = CFrame.new(7122,4475,4719),
     ["cubot_autoIoop"]       = CFrame.new(7132,4605,4707),
     ["Cubot_Nova2"]       = CFrame.new(7122,4705,4729),
