@@ -15,7 +15,7 @@ local autoactivate = true -- Set to false to disable auto-activation
 
 --// SERVER HOP SETTINGS
 local serverHopEnabled = true -- Set to false to disable server hopping
-local minPlayersRequired = 5 -- Will hop if less than this many players
+local minPlayersRequired = 6 -- Will hop if less than this many players
 local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum players
 
 --// ACTIVATION STATE
