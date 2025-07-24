@@ -72,7 +72,7 @@ local isScriptActive = true
 
 -- SERVER HOPPING VARIABLES
 local serverHopEnabled = true
-local minPlayersBeforeHop = 6 -- Will hop if player count drops to 2 or below
+local minPlayersBeforeHop = 5 -- Will hop if player count drops to 2 or below
 local hopCheckDelay = 30 -- Check every 30 seconds
 local lastHopCheck = 0
 
