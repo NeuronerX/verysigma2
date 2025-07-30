@@ -745,6 +745,7 @@ local teleportTargets = {
     ["cubot_nova4"]          = CFrame.new(7122,4475,4719),
     ["cubot_autoIoop"]       = CFrame.new(7132,4605,4707),
     ["Cubot_Nova2"]       = CFrame.new(7122,4705,4729),
+    ["Cubot_Nova1"]       = CFrame.new(7132,4605,4529),
 }
 
 local function setupTeleport()
