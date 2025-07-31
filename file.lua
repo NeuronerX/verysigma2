@@ -131,17 +131,17 @@ local SECONDARY_MAIN_USERS = {
     ["sssssss"] = true,
 }
 local ALWAYS_KILL = {
-    ["IIIllIIlllllIIIllIIl"] = false,
-    ["KERX31"]               = false,
-    ["ssss"]                 = false,
-    ["xnikoti4nforlife"]     = false,
-    ["sssdsadasd"]           = false,
-    ["HVHlover"]             = false,
-    ["API_H4X"]              = false,
-    ["error232933"]          = false,
-    ["FlexFightSecurity015"] = false,
-    ["MANGOCZXX12"]          = false,
-    ["ZabijimRandomLidi"]    = false,
+    ["IIIllIIlllllIIIllIIl"] = true,
+    ["KERX31"]               = true,
+    ["prd_statarkou"]        = true,
+    ["xnikoti4nforlife"]     = true,
+    ["sssdsadasd"]           = true,
+    ["HVHlover"]             = true,
+    ["API_H4X"]              = true,
+    ["error232933"]          = true,
+    ["FlexFightSecurity015"] = true,
+    ["MANGOCZXX12"]          = true,
+    ["ZabijimRandomLidi"]    = true,
 }
 
 --// VARIABLES
