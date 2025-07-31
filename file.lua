@@ -119,6 +119,8 @@ local MAIN_USERS = {
     ["Cubot_Nova3"] = true,
     ["cubot_nova4"] = true,
     ["Cub0t_01"] = true,
+    ["FlexFightPro68"]   = true,
+    ["Iamnotrealyblack"]  = true,
 }
 local SIGMA_USERS = {
     ["FlexFightPro68"]   = true,
