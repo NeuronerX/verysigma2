@@ -11,7 +11,7 @@ local teleportTargets = {
 }
 
 --// AUTO ACTIVATE SETTING (REMOVED DUPLICATE)
-local autoactivate = false -- Set to false to disable auto-activation
+local autoactivate = true -- Set to false to disable auto-activation
 
 --// SERVER HOP SETTINGS
 local serverHopEnabled = true -- Set to false to disable server hopping
