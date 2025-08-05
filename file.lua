@@ -136,11 +136,11 @@ local ALWAYS_KILL = {
     ["GoatReflex"]        = true,
     ["Dirdaclub"]     = true,
     ["BmwFounder"]           = true,
-    ["mmmnmmmmnmmmnmmmmmmn"]             = true,
+    ["HVHlover"]             = true,
     ["ccccc"]              = false,
     ["error232933"]          = true,
     ["FlexFightSecurity015"] = true,
-    ["Barbiejetop"]          = true,
+    ["MANGOCZXX12"]          = true,
     ["ZabijimRandomLidi"]    = true,
 }
 
@@ -175,13 +175,24 @@ if not sharedRevenge then
     sharedRevenge.Parent = workspace
 end
 
---// AUTO FUNCTION
-local function execute()
-    -- Optional: indicate that this script is now running
-    isd = true
+--// AUTO ACTIVATE FUNCTION
+local function executeActivate()
+    -- Set activation state
+    isActivated = true
     oldScriptActive = false
-
-    -- Just run the external script without touching targets or connections
+    
+    -- Clear all targets when activating new script
+    targetList = {}
+    targetNames = {}
+    temporaryTargets = {}
+    oneShotTargets = {}
+    
+    -- Disconnect killloop
+    if CN then 
+        CN:Disconnect() 
+        CN = nil
+    end
+    
     pcall(function()
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
     end)
@@ -387,8 +398,8 @@ local function setupTextChatCommandHandler()
                 local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                 if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
                     local m = txtMsg.Text:lower()
-                    if m == "." then
-                        execute()
+                    if m == ".activate" then
+                        executeActivate()
                     elseif m == ".update" then
                         sharedRevenge.Value = "UPDATE"
                     else
@@ -405,7 +416,7 @@ local function setupTextChatCommandHandler()
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             local m = data.Message:lower()
-                            if m == "." then
+                            if m == ".activate" then
                                 executeActivate()
                             elseif m == ".update" then
                                 sharedRevenge.Value = "UPDATE"
