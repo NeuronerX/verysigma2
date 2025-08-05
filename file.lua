@@ -27,8 +27,8 @@ local flingActive = false
 local flingTarget = nil
 local flingConnection = nil
 local flingReturnDistance = 500 -- Distance from spawn before returning
-local flingStartPosition = nil
 local flingCheckConnection = nil
+local SPAWN_LOCATION = Vector3.new(0, 0, 0) -- Default spawn location (adjust if needed)
 
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
@@ -211,6 +211,19 @@ local function getRoot(char)
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+local function unequipSword()
+    local char = LP.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    -- Unequip any tool (including sword)
+    local tool = char:FindFirstChildWhichIsA("Tool")
+    if tool then
+        humanoid:UnequipTools()
+    end
+end
+
 local function stopFling()
     flingActive = false
     flingTarget = nil
@@ -244,16 +257,8 @@ local function startFling(targetPlayer)
     flingActive = true
     flingTarget = targetPlayer
     
-    -- Store starting position
-    local myRoot = getRoot(LP.Character)
-    if myRoot then
-        local teleportPos = teleportTargets[LP.Name]
-        if teleportPos then
-            flingStartPosition = teleportPos.Position
-        else
-            flingStartPosition = myRoot.Position
-        end
-    end
+    -- Unequip sword immediately when starting fling
+    unequipSword()
     
     -- Main fling physics loop
     flingConnection = RunService.Heartbeat:Connect(function()
@@ -261,6 +266,9 @@ local function startFling(targetPlayer)
             stopFling()
             return
         end
+        
+        -- Keep sword unequipped during fling
+        unequipSword()
         
         local myChar = LP.Character
         local myRoot = getRoot(myChar)
@@ -296,9 +304,9 @@ local function startFling(targetPlayer)
             return
         end
         
-        -- Check distance from spawn/start position
-        if targetRoot and flingStartPosition then
-            local distance = (targetRoot.Position - flingStartPosition).Magnitude
+        -- Check distance from spawn location
+        if targetRoot then
+            local distance = (targetRoot.Position - SPAWN_LOCATION).Magnitude
             if distance > flingReturnDistance then
                 stopFling()
             end
@@ -757,9 +765,12 @@ end)
 -- AUTOEQUIP & BOXREACH
 --------------------------------------------------------------------------------
 local function forceEquip()
+    -- Don't equip sword during fling
+    if flingActive then return end
+    
     local char = LP.Character
     if not char then return end
-    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
     local sword = LP.Backpack:FindFirstChild("Sword")
     if sword and not char:FindFirstChild("Sword") then
@@ -767,7 +778,7 @@ local function forceEquip()
     end
 end
 
--- Constant sword equipping (ALWAYS ACTIVE)
+-- Constant sword equipping (ALWAYS ACTIVE - but respects fling mode)
 RunService.RenderStepped:Connect(forceEquip)
 
 local function CreateBoxReach(tool)
@@ -990,8 +1001,10 @@ local function SetupChar(c)
             setupTeleport()
         end
         
-        -- Immediate equip attempt (ALWAYS ACTIVE)
-        forceEquip()
+        -- Immediate equip attempt (ALWAYS ACTIVE) - unless flinging
+        if not flingActive then
+            forceEquip()
+        end
         
         -- Auto-activate after character loads (if enabled)
         if autoactivate and not isActivated then
@@ -1001,10 +1014,10 @@ local function SetupChar(c)
             end)
         end
         
-        -- Check if sword is equipped after 5 seconds
+        -- Check if sword is equipped after 5 seconds (skip if flinging)
         task.spawn(function()
             task.wait(5)
-            if c and c.Parent and not c:FindFirstChild("Sword") then
+            if not flingActive and c and c.Parent and not c:FindFirstChild("Sword") then
                 -- Reset character if no sword equipped
                 if h and h.Parent then
                     h.Health = 0
@@ -1030,7 +1043,9 @@ LP.CharacterAdded:Connect(function(char)
     pcall(function()
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
-        forceEquip()
+        if not flingActive then
+            forceEquip()
+        end
     end)
 end)
 
