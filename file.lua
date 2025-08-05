@@ -22,6 +22,14 @@ local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum pl
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
 
+--// FLING VARIABLES
+local flingActive = false
+local flingTarget = nil
+local flingConnection = nil
+local flingReturnDistance = 500 -- Distance from spawn before returning
+local flingStartPosition = nil
+local flingCheckConnection = nil
+
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
     local cf = teleportTargets[LP.Name]
@@ -195,6 +203,106 @@ local function executeActivate()
     
     pcall(function()
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
+    end)
+end
+
+--// FLING FUNCTIONS
+local function getRoot(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function stopFling()
+    flingActive = false
+    flingTarget = nil
+    
+    if flingConnection then
+        flingConnection:Disconnect()
+        flingConnection = nil
+    end
+    
+    if flingCheckConnection then
+        flingCheckConnection:Disconnect()
+        flingCheckConnection = nil
+    end
+    
+    -- Return to teleport position
+    setupTeleport()
+end
+
+local function startFling(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    
+    -- Stop any existing fling
+    stopFling()
+    
+    -- Disable normal teleport temporarily
+    if teleportConnection then
+        teleportConnection:Disconnect()
+        teleportConnection = nil
+    end
+    
+    flingActive = true
+    flingTarget = targetPlayer
+    
+    -- Store starting position
+    local myRoot = getRoot(LP.Character)
+    if myRoot then
+        local teleportPos = teleportTargets[LP.Name]
+        if teleportPos then
+            flingStartPosition = teleportPos.Position
+        else
+            flingStartPosition = myRoot.Position
+        end
+    end
+    
+    -- Main fling physics loop
+    flingConnection = RunService.Heartbeat:Connect(function()
+        if not flingActive or not flingTarget or not Players:FindFirstChild(flingTarget.Name) then
+            stopFling()
+            return
+        end
+        
+        local myChar = LP.Character
+        local myRoot = getRoot(myChar)
+        local targetChar = flingTarget.Character
+        local targetRoot = getRoot(targetChar)
+        local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+        
+        if myRoot and targetRoot then
+            -- Apply fling physics
+            myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -1)
+            myRoot.AssemblyAngularVelocity = Vector3.new(9999, 99999, 9999)
+            myRoot.AssemblyLinearVelocity = (targetRoot.Position - myRoot.Position).Unit * 100
+        end
+        
+        -- Check if target died
+        if not targetHum or targetHum.Health <= 0 then
+            stopFling()
+            return
+        end
+    end)
+    
+    -- Distance and death check loop
+    flingCheckConnection = RunService.Heartbeat:Connect(function()
+        if not flingActive then return end
+        
+        local targetChar = flingTarget and flingTarget.Character
+        local targetRoot = getRoot(targetChar)
+        local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+        
+        -- Check if target died
+        if not targetHum or targetHum.Health <= 0 then
+            stopFling()
+            return
+        end
+        
+        -- Check distance from spawn/start position
+        if targetRoot and flingStartPosition then
+            local distance = (targetRoot.Position - flingStartPosition).Magnitude
+            if distance > flingReturnDistance then
+                stopFling()
+            end
+        end
     end)
 end
 
@@ -387,6 +495,14 @@ local function processChatCommand(msg)
         oneShotTargets[pl.Name] = true
         if not targetNames[pl.Name] then
             table.insert(targetList, pl)
+        end
+    elseif cmd == "fling" then
+        -- New fling command
+        if flingActive and flingTarget == pl then
+            -- Stop fling if already flinging this player
+            stopFling()
+        else
+            startFling(pl)
         end
     end
 end
@@ -707,6 +823,7 @@ end
 
 local function HB()
     if not oldScriptActive then return end -- Don't attack if new script is active
+    if flingActive then return end -- Don't attack during fling
     
     forceEquip()
     local c = LP.Character if not c then return end
@@ -751,6 +868,7 @@ local teleportTargets = {
 }
 
 local function setupTeleport()
+    if flingActive then return end -- Don't teleport during fling
     if teleportConnection then teleportConnection:Disconnect() end
     local cf = teleportTargets[LP.Name]
     if cf then
@@ -867,8 +985,10 @@ local function SetupChar(c)
             killTracker[LP.Name].lastRespawn = os.time()
         end
         
-        -- Setup teleport immediately for main users (ALWAYS ACTIVE)
-        setupTeleport()
+        -- Setup teleport immediately for main users (ALWAYS ACTIVE) - unless flinging
+        if not flingActive then
+            setupTeleport()
+        end
         
         -- Immediate equip attempt (ALWAYS ACTIVE)
         forceEquip()
