@@ -132,7 +132,7 @@ local SECONDARY_MAIN_USERS = {
 }
 local ALWAYS_KILL = {
     ["lurty1509"] = true,
-    ["jarkobubv35"]               = true,
+    ["jarkobubv35"]               = false,
     ["GoatReflex"]        = true,
     ["Dirdaclub"]     = true,
     ["sssdsadasd"]           = true,
