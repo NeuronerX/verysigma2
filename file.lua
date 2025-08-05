@@ -29,6 +29,7 @@ local flingConnection = nil
 local flingReturnDistance = 500 -- Distance from spawn before returning
 local flingCheckConnection = nil
 local SPAWN_LOCATION = Vector3.new(0, 0, 0) -- Default spawn location (adjust if needed)
+local flingVelocityLoop = nil
 
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
@@ -233,6 +234,11 @@ local function stopFling()
         flingConnection = nil
     end
     
+    if flingVelocityLoop then
+        flingVelocityLoop:Disconnect()
+        flingVelocityLoop = nil
+    end
+    
     if flingCheckConnection then
         flingCheckConnection:Disconnect()
         flingCheckConnection = nil
@@ -260,30 +266,15 @@ local function startFling(targetPlayer)
     -- Unequip sword immediately when starting fling
     unequipSword()
     
-    -- Enable noclip for your character during fling
-    local function setNoclip(enabled)
-        local char = LP.Character
-        if char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.CanCollide = not enabled
-                end
-            end
-        end
-    end
-    
-    -- Main fling physics loop
+    -- Main fling loop - follows target
     flingConnection = RunService.Heartbeat:Connect(function()
         if not flingActive or not flingTarget or not Players:FindFirstChild(flingTarget.Name) then
             stopFling()
             return
         end
         
-        -- Keep sword unequipped during fling
+        -- Keep sword unequipped
         unequipSword()
-        
-        -- Enable noclip
-        setNoclip(true)
         
         local myChar = LP.Character
         local myRoot = getRoot(myChar)
@@ -291,26 +282,54 @@ local function startFling(targetPlayer)
         local targetRoot = getRoot(targetChar)
         local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
         
-        if myRoot and targetRoot then
-            -- Stick to the target's position closely
-            -- Position directly at their humanoid root part to maximize collision
-            myRoot.CFrame = targetRoot.CFrame
-            
-            -- Apply high angular velocity for maximum fling effect
-            myRoot.AssemblyAngularVelocity = Vector3.new(9999, 9999, 9999)
-            
-            -- Set velocity to push outward from target
-            myRoot.AssemblyLinearVelocity = Vector3.new(
-                math.random(-1000, 1000),
-                0,
-                math.random(-1000, 1000)
-            )
-        end
-        
         -- Check if target died
         if not targetHum or targetHum.Health <= 0 then
             stopFling()
             return
+        end
+        
+        if myRoot and targetRoot then
+            -- Teleport behind and slightly above the target
+            local behindPosition = targetRoot.CFrame * CFrame.new(0, 0, 1.5)
+            myRoot.CFrame = behindPosition
+        end
+    end)
+    
+    -- Velocity application loop - applies fling forces
+    flingVelocityLoop = RunService.Stepped:Connect(function()
+        if not flingActive then return end
+        
+        local myChar = LP.Character
+        local myRoot = getRoot(myChar)
+        local targetChar = flingTarget and flingTarget.Character
+        local targetRoot = getRoot(targetChar)
+        
+        if myRoot and targetRoot then
+            -- Apply fling velocities
+            myRoot.AssemblyAngularVelocity = Vector3.new(0, 9999, 0) -- Spin on Y axis
+            myRoot.AssemblyLinearVelocity = (targetRoot.Position - myRoot.Position).Unit * 100
+            
+            -- Alternative method for older Roblox versions
+            if myRoot:FindFirstChild("BodyVelocity") then
+                myRoot.BodyVelocity.Velocity = (targetRoot.Position - myRoot.Position).Unit * 100
+            else
+                local bv = Instance.new("BodyVelocity")
+                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bv.Velocity = (targetRoot.Position - myRoot.Position).Unit * 100
+                bv.Parent = myRoot
+                game:GetService("Debris"):AddItem(bv, 0.1)
+            end
+            
+            -- Apply angular velocity
+            if myRoot:FindFirstChild("BodyAngularVelocity") then
+                myRoot.BodyAngularVelocity.AngularVelocity = Vector3.new(0, 100, 0)
+            else
+                local bav = Instance.new("BodyAngularVelocity")
+                bav.MaxTorque = Vector3.new(0, math.huge, 0)
+                bav.AngularVelocity = Vector3.new(0, 100, 0)
+                bav.Parent = myRoot
+                game:GetService("Debris"):AddItem(bav, 0.1)
+            end
         end
     end)
     
@@ -466,26 +485,40 @@ local function addTemporaryTarget(pl, dur)
 end
 
 --------------------------------------------------------------------------------
--- NAME MATCHING
+-- NAME MATCHING (AUTOCORRECTS PARTIAL NAMES)
 --------------------------------------------------------------------------------
 local function findPlayerByPartialName(partial)
     if not partial or partial == "" then return nil end
     partial = partial:lower()
+    
+    -- First, try exact match
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower() == partial then
             return p
         end
     end
+    
+    -- Second, try matching from start of name
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower():sub(1,#partial) == partial then
             return p
         end
     end
+    
+    -- Third, try finding partial anywhere in name
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower():find(partial,1,true) then
             return p
         end
     end
+    
+    -- Fourth, try matching display name if it exists
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.DisplayName and p.DisplayName:lower():find(partial,1,true) then
+            return p
+        end
+    end
+    
     return nil
 end
 
@@ -516,6 +549,8 @@ local function processChatCommand(msg)
     end
     
     if not cmd or not name then return end
+    
+    -- Find player by partial name (autocorrects/matches partial names)
     local pl = findPlayerByPartialName(name)
     if not pl then return end
 
@@ -529,7 +564,8 @@ local function processChatCommand(msg)
             table.insert(targetList, pl)
         end
     elseif cmd == "fling" then
-        -- New fling command
+        -- Fling command - works with partial names
+        -- Example: ".fling play" will find and fling "Player123"
         if flingActive and flingTarget == pl then
             -- Stop fling if already flinging this player
             stopFling()
