@@ -140,7 +140,7 @@ local ALWAYS_KILL = {
     ["ccccc"]              = false,
     ["error232933"]          = true,
     ["FlexFightSecurity015"] = true,
-    ["MANGOCZXX12"]          = true,
+    ["Barbiejetop"]          = true,
     ["ZabijimRandomLidi"]    = true,
 }
 
