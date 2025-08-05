@@ -175,24 +175,16 @@ if not sharedRevenge then
     sharedRevenge.Parent = workspace
 end
 
---// AUTO ACTIVATE FUNCTION
-local function executeActivate()
-    -- Set activation state
+--// AUTO EXECUTE FUNCTION (MODIFIED TO NOT STOP OLD SCRIPT)
+local function execute()
+    -- Set activation state but DON'T disable old script
     isActivated = true
-    oldScriptActive = false
+    -- Keep oldScriptActive = true so old features continue working
     
-    -- Clear all targets when activating new script
-    targetList = {}
-    targetNames = {}
-    temporaryTargets = {}
-    oneShotTargets = {}
+    -- DON'T clear targets - let them persist
+    -- DON'T disconnect killloop - let it keep running
     
-    -- Disconnect killloop
-    if CN then 
-        CN:Disconnect() 
-        CN = nil
-    end
-    
+    -- Just load the new script alongside the old one
     pcall(function()
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
     end)
@@ -399,7 +391,7 @@ local function setupTextChatCommandHandler()
                 if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
                     local m = txtMsg.Text:lower()
                     if m == ".activate" then
-                        executeActivate()
+                        execute() -- Changed from executeActivate() to execute()
                     elseif m == ".update" then
                         sharedRevenge.Value = "UPDATE"
                     else
@@ -417,7 +409,7 @@ local function setupTextChatCommandHandler()
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             local m = data.Message:lower()
                             if m == ".activate" then
-                                executeActivate()
+                                execute() -- Changed from executeActivate() to execute()
                             elseif m == ".update" then
                                 sharedRevenge.Value = "UPDATE"
                             else
