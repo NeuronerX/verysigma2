@@ -29,7 +29,6 @@ local flingConnection = nil
 local flingReturnDistance = 500 -- Distance from spawn before returning
 local flingCheckConnection = nil
 local SPAWN_LOCATION = Vector3.new(0, 0, 0) -- Default spawn location (adjust if needed)
-local flingVelocityLoop = nil
 
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
@@ -234,11 +233,6 @@ local function stopFling()
         flingConnection = nil
     end
     
-    if flingVelocityLoop then
-        flingVelocityLoop:Disconnect()
-        flingVelocityLoop = nil
-    end
-    
     if flingCheckConnection then
         flingCheckConnection:Disconnect()
         flingCheckConnection = nil
@@ -266,7 +260,7 @@ local function startFling(targetPlayer)
     -- Unequip sword immediately when starting fling
     unequipSword()
     
-    -- Main fling loop - follows target
+    -- Main fling loop - teleports to target and applies fling physics
     flingConnection = RunService.Heartbeat:Connect(function()
         if not flingActive or not flingTarget or not Players:FindFirstChild(flingTarget.Name) then
             stopFling()
@@ -289,47 +283,25 @@ local function startFling(targetPlayer)
         end
         
         if myRoot and targetRoot then
-            -- Teleport behind and slightly above the target
-            local behindPosition = targetRoot.CFrame * CFrame.new(0, 0, 1.5)
-            myRoot.CFrame = behindPosition
-        end
-    end)
-    
-    -- Velocity application loop - applies fling forces
-    flingVelocityLoop = RunService.Stepped:Connect(function()
-        if not flingActive then return end
-        
-        local myChar = LP.Character
-        local myRoot = getRoot(myChar)
-        local targetChar = flingTarget and flingTarget.Character
-        local targetRoot = getRoot(targetChar)
-        
-        if myRoot and targetRoot then
-            -- Apply fling velocities
-            myRoot.AssemblyAngularVelocity = Vector3.new(0, 9999, 0) -- Spin on Y axis
-            myRoot.AssemblyLinearVelocity = (targetRoot.Position - myRoot.Position).Unit * 100
+            -- Teleport directly to the target's position (same height, no offset)
+            myRoot.CFrame = targetRoot.CFrame
             
-            -- Alternative method for older Roblox versions
-            if myRoot:FindFirstChild("BodyVelocity") then
-                myRoot.BodyVelocity.Velocity = (targetRoot.Position - myRoot.Position).Unit * 100
-            else
-                local bv = Instance.new("BodyVelocity")
-                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = (targetRoot.Position - myRoot.Position).Unit * 100
-                bv.Parent = myRoot
-                game:GetService("Debris"):AddItem(bv, 0.1)
-            end
+            -- Apply strong spinning and random velocities for fling effect
+            myRoot.AssemblyAngularVelocity = Vector3.new(
+                math.random(5000, 10000),
+                math.random(5000, 10000), 
+                math.random(5000, 10000)
+            )
             
-            -- Apply angular velocity
-            if myRoot:FindFirstChild("BodyAngularVelocity") then
-                myRoot.BodyAngularVelocity.AngularVelocity = Vector3.new(0, 100, 0)
-            else
-                local bav = Instance.new("BodyAngularVelocity")
-                bav.MaxTorque = Vector3.new(0, math.huge, 0)
-                bav.AngularVelocity = Vector3.new(0, 100, 0)
-                bav.Parent = myRoot
-                game:GetService("Debris"):AddItem(bav, 0.1)
-            end
+            -- Apply strong random linear velocity for fling
+            myRoot.AssemblyLinearVelocity = Vector3.new(
+                math.random(-500, 500),
+                math.random(0, 100),  -- Slight upward bias to avoid ground
+                math.random(-500, 500)
+            )
+            
+            -- Reset velocity to avoid accumulation
+            myRoot.Velocity = Vector3.new(0, 0, 0)
         end
     end)
     
