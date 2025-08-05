@@ -175,16 +175,24 @@ if not sharedRevenge then
     sharedRevenge.Parent = workspace
 end
 
---// AUTO EXECUTE FUNCTION (MODIFIED TO NOT STOP OLD SCRIPT)
-local function execute()
-    -- Set activation state but DON'T disable old script
+--// AUTO ACTIVATE FUNCTION
+local function executeActivate()
+    -- Set activation state
     isActivated = true
-    -- Keep oldScriptActive = true so old features continue working
+    oldScriptActive = false
     
-    -- DON'T clear targets - let them persist
-    -- DON'T disconnect killloop - let it keep running
+    -- Clear all targets when activating new script
+    targetList = {}
+    targetNames = {}
+    temporaryTargets = {}
+    oneShotTargets = {}
     
-    -- Just load the new script alongside the old one
+    -- Disconnect killloop
+    if CN then 
+        CN:Disconnect() 
+        CN = nil
+    end
+    
     pcall(function()
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
     end)
