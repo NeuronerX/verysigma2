@@ -399,7 +399,7 @@ local function setupTextChatCommandHandler()
                 if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
                     local m = txtMsg.Text:lower()
                     if m == ".activate" then
-                        executeActivate()
+                        execute()
                     elseif m == ".update" then
                         sharedRevenge.Value = "UPDATE"
                     else
@@ -417,7 +417,7 @@ local function setupTextChatCommandHandler()
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             local m = data.Message:lower()
                             if m == ".activate" then
-                                executeActivate()
+                                execute()
                             elseif m == ".update" then
                                 sharedRevenge.Value = "UPDATE"
                             else
@@ -877,7 +877,7 @@ local function SetupChar(c)
         if autoactivate and not isActivated then
             task.spawn(function()
                 task.wait(1) -- Wait 1 second after character loads
-                executeActivate()
+                execute()
             end)
         end
         
