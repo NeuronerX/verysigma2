@@ -195,6 +195,9 @@ local function execute()
     end
 end
 
+-- Alias for chat handler compatibility
+local executeActivate = execute
+
 --------------------------------------------------------------------------------
 -- FPS BOOSTER
 --------------------------------------------------------------------------------
