@@ -136,7 +136,7 @@ local ALWAYS_KILL = {
     ["GoatReflex"]        = true,
     ["Dirdaclub"]     = true,
     ["BmwFounder"]           = true,
-    ["HVHlover"]             = true,
+    ["mmmnmmmmnmmmnmmmmmmn"]             = true,
     ["ccccc"]              = false,
     ["error232933"]          = true,
     ["FlexFightSecurity015"] = true,
@@ -175,10 +175,10 @@ if not sharedRevenge then
     sharedRevenge.Parent = workspace
 end
 
---// AUTO ACTIVATE FUNCTION
-local function executeActivate()
+--// AUTO  FUNCTION
+local function execute()
     -- Set activation state
-    isActivated = true
+    isd = true
     oldScriptActive = false
     
     -- Clear all targets when activating new script
@@ -398,8 +398,8 @@ local function setupTextChatCommandHandler()
                 local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                 if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
                     local m = txtMsg.Text:lower()
-                    if m == ".activate" then
-                        executeActivate()
+                    if m == "." then
+                        execute()
                     elseif m == ".update" then
                         sharedRevenge.Value = "UPDATE"
                     else
@@ -416,7 +416,7 @@ local function setupTextChatCommandHandler()
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             local m = data.Message:lower()
-                            if m == ".activate" then
+                            if m == "." then
                                 executeActivate()
                             elseif m == ".update" then
                                 sharedRevenge.Value = "UPDATE"
