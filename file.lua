@@ -260,6 +260,18 @@ local function startFling(targetPlayer)
     -- Unequip sword immediately when starting fling
     unequipSword()
     
+    -- Enable noclip for your character during fling
+    local function setNoclip(enabled)
+        local char = LP.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CanCollide = not enabled
+                end
+            end
+        end
+    end
+    
     -- Main fling physics loop
     flingConnection = RunService.Heartbeat:Connect(function()
         if not flingActive or not flingTarget or not Players:FindFirstChild(flingTarget.Name) then
@@ -270,6 +282,9 @@ local function startFling(targetPlayer)
         -- Keep sword unequipped during fling
         unequipSword()
         
+        -- Enable noclip
+        setNoclip(true)
+        
         local myChar = LP.Character
         local myRoot = getRoot(myChar)
         local targetChar = flingTarget.Character
@@ -277,10 +292,19 @@ local function startFling(targetPlayer)
         local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
         
         if myRoot and targetRoot then
-            -- Apply fling physics
-            myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, -1)
-            myRoot.AssemblyAngularVelocity = Vector3.new(9999, 99999, 9999)
-            myRoot.AssemblyLinearVelocity = (targetRoot.Position - myRoot.Position).Unit * 100
+            -- Stick to the target's position closely
+            -- Position directly at their humanoid root part to maximize collision
+            myRoot.CFrame = targetRoot.CFrame
+            
+            -- Apply high angular velocity for maximum fling effect
+            myRoot.AssemblyAngularVelocity = Vector3.new(9999, 9999, 9999)
+            
+            -- Set velocity to push outward from target
+            myRoot.AssemblyLinearVelocity = Vector3.new(
+                math.random(-1000, 1000),
+                0,
+                math.random(-1000, 1000)
+            )
         end
         
         -- Check if target died
