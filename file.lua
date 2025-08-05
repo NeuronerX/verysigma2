@@ -22,14 +22,6 @@ local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum pl
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
 
---// FLING VARIABLES
-local flingActive = false
-local flingTarget = nil
-local flingConnection = nil
-local flingReturnDistance = 500 -- Distance from spawn before returning
-local flingCheckConnection = nil
-local SPAWN_LOCATION = Vector3.new(0, 0, 0) -- Default spawn location (adjust if needed)
-
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
     local cf = teleportTargets[LP.Name]
@@ -206,129 +198,6 @@ local function executeActivate()
     end)
 end
 
---// FLING FUNCTIONS
-local function getRoot(char)
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function unequipSword()
-    local char = LP.Character
-    if not char then return end
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    -- Unequip any tool (including sword)
-    local tool = char:FindFirstChildWhichIsA("Tool")
-    if tool then
-        humanoid:UnequipTools()
-    end
-end
-
-local function stopFling()
-    flingActive = false
-    flingTarget = nil
-    
-    if flingConnection then
-        flingConnection:Disconnect()
-        flingConnection = nil
-    end
-    
-    if flingCheckConnection then
-        flingCheckConnection:Disconnect()
-        flingCheckConnection = nil
-    end
-    
-    -- Return to teleport position
-    setupTeleport()
-end
-
-local function startFling(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then return end
-    
-    -- Stop any existing fling
-    stopFling()
-    
-    -- Disable normal teleport temporarily
-    if teleportConnection then
-        teleportConnection:Disconnect()
-        teleportConnection = nil
-    end
-    
-    flingActive = true
-    flingTarget = targetPlayer
-    
-    -- Unequip sword immediately when starting fling
-    unequipSword()
-    
-    -- Main fling loop - teleports to target and applies fling physics
-    flingConnection = RunService.Heartbeat:Connect(function()
-        if not flingActive or not flingTarget or not Players:FindFirstChild(flingTarget.Name) then
-            stopFling()
-            return
-        end
-        
-        -- Keep sword unequipped
-        unequipSword()
-        
-        local myChar = LP.Character
-        local myRoot = getRoot(myChar)
-        local targetChar = flingTarget.Character
-        local targetRoot = getRoot(targetChar)
-        local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
-        
-        -- Check if target died
-        if not targetHum or targetHum.Health <= 0 then
-            stopFling()
-            return
-        end
-        
-        if myRoot and targetRoot then
-            -- Teleport directly to the target's position (same height, no offset)
-            myRoot.CFrame = targetRoot.CFrame
-            
-            -- Apply strong spinning and random velocities for fling effect
-            myRoot.AssemblyAngularVelocity = Vector3.new(
-                math.random(5000, 10000),
-                math.random(5000, 10000), 
-                math.random(5000, 10000)
-            )
-            
-            -- Apply strong random linear velocity for fling
-            myRoot.AssemblyLinearVelocity = Vector3.new(
-                math.random(-500, 500),
-                math.random(0, 100),  -- Slight upward bias to avoid ground
-                math.random(-500, 500)
-            )
-            
-            -- Reset velocity to avoid accumulation
-            myRoot.Velocity = Vector3.new(0, 0, 0)
-        end
-    end)
-    
-    -- Distance and death check loop
-    flingCheckConnection = RunService.Heartbeat:Connect(function()
-        if not flingActive then return end
-        
-        local targetChar = flingTarget and flingTarget.Character
-        local targetRoot = getRoot(targetChar)
-        local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
-        
-        -- Check if target died
-        if not targetHum or targetHum.Health <= 0 then
-            stopFling()
-            return
-        end
-        
-        -- Check distance from spawn location
-        if targetRoot then
-            local distance = (targetRoot.Position - SPAWN_LOCATION).Magnitude
-            if distance > flingReturnDistance then
-                stopFling()
-            end
-        end
-    end)
-end
-
 --------------------------------------------------------------------------------
 -- FPS BOOSTER
 --------------------------------------------------------------------------------
@@ -457,40 +326,26 @@ local function addTemporaryTarget(pl, dur)
 end
 
 --------------------------------------------------------------------------------
--- NAME MATCHING (AUTOCORRECTS PARTIAL NAMES)
+-- NAME MATCHING
 --------------------------------------------------------------------------------
 local function findPlayerByPartialName(partial)
     if not partial or partial == "" then return nil end
     partial = partial:lower()
-    
-    -- First, try exact match
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower() == partial then
             return p
         end
     end
-    
-    -- Second, try matching from start of name
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower():sub(1,#partial) == partial then
             return p
         end
     end
-    
-    -- Third, try finding partial anywhere in name
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower():find(partial,1,true) then
             return p
         end
     end
-    
-    -- Fourth, try matching display name if it exists
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.DisplayName and p.DisplayName:lower():find(partial,1,true) then
-            return p
-        end
-    end
-    
     return nil
 end
 
@@ -521,8 +376,6 @@ local function processChatCommand(msg)
     end
     
     if not cmd or not name then return end
-    
-    -- Find player by partial name (autocorrects/matches partial names)
     local pl = findPlayerByPartialName(name)
     if not pl then return end
 
@@ -534,15 +387,6 @@ local function processChatCommand(msg)
         oneShotTargets[pl.Name] = true
         if not targetNames[pl.Name] then
             table.insert(targetList, pl)
-        end
-    elseif cmd == "fling" then
-        -- Fling command - works with partial names
-        -- Example: ".fling play" will find and fling "Player123"
-        if flingActive and flingTarget == pl then
-            -- Stop fling if already flinging this player
-            stopFling()
-        else
-            startFling(pl)
         end
     end
 end
@@ -797,12 +641,9 @@ end)
 -- AUTOEQUIP & BOXREACH
 --------------------------------------------------------------------------------
 local function forceEquip()
-    -- Don't equip sword during fling
-    if flingActive then return end
-    
     local char = LP.Character
     if not char then return end
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
     if not humanoid then return end
     local sword = LP.Backpack:FindFirstChild("Sword")
     if sword and not char:FindFirstChild("Sword") then
@@ -810,7 +651,7 @@ local function forceEquip()
     end
 end
 
--- Constant sword equipping (ALWAYS ACTIVE - but respects fling mode)
+-- Constant sword equipping (ALWAYS ACTIVE)
 RunService.RenderStepped:Connect(forceEquip)
 
 local function CreateBoxReach(tool)
@@ -866,7 +707,6 @@ end
 
 local function HB()
     if not oldScriptActive then return end -- Don't attack if new script is active
-    if flingActive then return end -- Don't attack during fling
     
     forceEquip()
     local c = LP.Character if not c then return end
@@ -911,7 +751,6 @@ local teleportTargets = {
 }
 
 local function setupTeleport()
-    if flingActive then return end -- Don't teleport during fling
     if teleportConnection then teleportConnection:Disconnect() end
     local cf = teleportTargets[LP.Name]
     if cf then
@@ -1028,15 +867,11 @@ local function SetupChar(c)
             killTracker[LP.Name].lastRespawn = os.time()
         end
         
-        -- Setup teleport immediately for main users (ALWAYS ACTIVE) - unless flinging
-        if not flingActive then
-            setupTeleport()
-        end
+        -- Setup teleport immediately for main users (ALWAYS ACTIVE)
+        setupTeleport()
         
-        -- Immediate equip attempt (ALWAYS ACTIVE) - unless flinging
-        if not flingActive then
-            forceEquip()
-        end
+        -- Immediate equip attempt (ALWAYS ACTIVE)
+        forceEquip()
         
         -- Auto-activate after character loads (if enabled)
         if autoactivate and not isActivated then
@@ -1046,10 +881,10 @@ local function SetupChar(c)
             end)
         end
         
-        -- Check if sword is equipped after 5 seconds (skip if flinging)
+        -- Check if sword is equipped after 5 seconds
         task.spawn(function()
             task.wait(5)
-            if not flingActive and c and c.Parent and not c:FindFirstChild("Sword") then
+            if c and c.Parent and not c:FindFirstChild("Sword") then
                 -- Reset character if no sword equipped
                 if h and h.Parent then
                     h.Health = 0
@@ -1075,9 +910,7 @@ LP.CharacterAdded:Connect(function(char)
     pcall(function()
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
-        if not flingActive then
-            forceEquip()
-        end
+        forceEquip()
     end)
 end)
 
