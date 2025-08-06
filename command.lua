@@ -82,7 +82,12 @@ local function cleanupScript()
 	
 	-- Resume external teleport if it was paused
 	if externalTeleportConnection and originalTeleportPaused then
-		externalTeleportConnection:Enable()
+		local success, error = pcall(function()
+			externalTeleportConnection:Enable()
+		end)
+		if not success then
+			print("Failed to resume external teleport:", error)
+		end
 	end
 	
 	-- Clear global flag
@@ -177,26 +182,56 @@ local function startNoclip()
 	end)
 end
 
--- Stop external teleport (from other script)
+-- Stop external teleport (from other script) - FIXED VERSION
 local function stopExternalTeleport()
 	-- Try to find and disconnect the external teleport connection
-	-- This is a common pattern - look for connections in the environment
-	for _, connection in pairs(getconnections(RunService.Heartbeat)) do
-		local func = debug.getinfo(connection.Function)
-		if func and func.source:find("teleportConnection") then
-			connection:Disable()
-			externalTeleportConnection = connection
-			originalTeleportPaused = true
-			break
+	-- This is a safer approach that handles the case where getconnections might not exist
+	local success, connections_list = pcall(function()
+		if getconnections then
+			return getconnections(RunService.Heartbeat)
+		else
+			return {}
 		end
+	end)
+	
+	if success and connections_list then
+		for _, connection in pairs(connections_list) do
+			if connection and connection.Function then
+				local success2, func_info = pcall(function()
+					return debug.getinfo(connection.Function)
+				end)
+				
+				if success2 and func_info and func_info.source and func_info.source:find("teleportConnection") then
+					local success3 = pcall(function()
+						connection:Disable()
+					end)
+					if success3 then
+						externalTeleportConnection = connection
+						originalTeleportPaused = true
+						print("External teleport paused")
+						break
+					end
+				end
+			end
+		end
+	else
+		-- If getconnections is not available, just print a warning
+		print("Warning: Could not access external teleport connections")
 	end
 end
 
 -- Resume external teleport
 local function resumeExternalTeleport()
 	if externalTeleportConnection and originalTeleportPaused then
-		externalTeleportConnection:Enable()
-		originalTeleportPaused = false
+		local success = pcall(function()
+			externalTeleportConnection:Enable()
+		end)
+		if success then
+			originalTeleportPaused = false
+			print("External teleport resumed")
+		else
+			print("Failed to resume external teleport")
+		end
 	end
 end
 
@@ -584,12 +619,12 @@ task.spawn(function()
 end)
 
 -- Update friends cache when players join
-connections.playerAdded = Players.PlayerAdded:Connect(function(player)
+connections.playerAdded2 = Players.PlayerAdded:Connect(function(player)
 	-- Clear cache entry to force recheck
 	friendsCache[player.UserId] = nil
 end)
 
-print("Advanced Protection Script Loaded!2")
+print("Advanced Protection Script Loaded!3")
 print("Authorized user and their friends can use commands")
 print("Friends of authorized user are automatically safe from attacks")
 print("Commands:")
