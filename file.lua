@@ -211,7 +211,7 @@ local function startProtecting(playerName, protectorNumber)
         end
     end
     
-    -- Start protection teleport
+    -- Start protection teleport - FIXED: protector teleports below protected player
     local connection = RunService.Heartbeat:Connect(function()
         local protectedPlayer = Players:FindFirstChild(playerName)
         local protector = Players:FindFirstChild(protectorName)
@@ -221,13 +221,13 @@ local function startProtecting(playerName, protectorNumber)
            protectedPlayer.Character:FindFirstChild("HumanoidRootPart") and
            protector.Character:FindFirstChild("HumanoidRootPart") then
             
-            local protectorHRP = protector.Character.HumanoidRootPart
             local protectedHRP = protectedPlayer.Character.HumanoidRootPart
+            local protectorHRP = protector.Character.HumanoidRootPart
             
-            -- Teleport protected player below protector
-            local newPos = protectorHRP.Position - Vector3.new(0, 10, 0)
-            protectedHRP.CFrame = CFrame.new(newPos)
-            protectedHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            -- Teleport protector below protected player
+            local newPos = protectedHRP.Position - Vector3.new(0, 10, 0)
+            protectorHRP.CFrame = CFrame.new(newPos)
+            protectorHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         end
     end)
     
@@ -891,6 +891,10 @@ local function HB()
     CreateBoxReach(tool)
     local reach = tool:FindFirstChild("BoxReachPart") or tool:FindFirstChild("Handle")
     if not reach then return end
+    
+    local myHRP = c:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+    local myPos = myHRP.Position
 
     for i=#targetList,1,-1 do
         local p = targetList[i]
@@ -900,14 +904,18 @@ local function HB()
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
                 local r = p.Character:FindFirstChild("HumanoidRootPart")
                 if h and r and h.Health>0 then
-                    -- Use pcall to safely access p.Name
-                    local success, playerName = pcall(function() return p.Name end)
-                    if success and oneShotTargets[playerName] then
-                        MH(reach,p)
-                        oneShotTargets[playerName] = nil
-                        removeTarget(p)
-                    else
-                        MH(reach,p)
+                    -- Check distance (25 studs max)
+                    local distance = (r.Position - myPos).Magnitude
+                    if distance <= 25 then
+                        -- Use pcall to safely access p.Name
+                        local success, playerName = pcall(function() return p.Name end)
+                        if success and oneShotTargets[playerName] then
+                            MH(reach,p)
+                            oneShotTargets[playerName] = nil
+                            removeTarget(p)
+                        else
+                            MH(reach,p)
+                        end
                     end
                 end
             end
@@ -1157,4 +1165,4 @@ Players.PlayerRemoving:Connect(function(pl)
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
 
-print("loaded ver 1")
+print("loaded ver 2")
