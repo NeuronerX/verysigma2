@@ -1,6 +1,14 @@
+-- Check if script is already running
+if _G.ProtectionScriptActive then
+	warn("Protection script is already running! Stop it before executing again.")
+	return
+end
+_G.ProtectionScriptActive = true
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local TextChatService = game:GetService("TextChatService")
 local LP = Players.LocalPlayer
 
 -- SETTINGS
@@ -38,6 +46,50 @@ local originalTeleportPaused = false -- Track if we paused original teleport
 
 -- Reference to the other script's teleport connection (if accessible)
 local externalTeleportConnection = nil
+
+-- Script cleanup function
+local function cleanupScript()
+	-- Stop all loops
+	for _, loop in pairs(loops) do
+		if loop then
+			task.cancel(loop)
+		end
+	end
+	table.clear(loops)
+	
+	-- Disconnect all connections
+	for _, connection in pairs(connections) do
+		if connection then
+			connection:Disconnect()
+		end
+	end
+	table.clear(connections)
+	
+	-- Clear tables
+	table.clear(K)
+	table.clear(A)
+	table.clear(whitelist)
+	table.clear(friendsCache)
+	
+	-- Re-enable collision
+	if LP.Character then
+		for _, part in ipairs(LP.Character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = true
+			end
+		end
+	end
+	
+	-- Resume external teleport if it was paused
+	if externalTeleportConnection and originalTeleportPaused then
+		externalTeleportConnection:Enable()
+	end
+	
+	-- Clear global flag
+	_G.ProtectionScriptActive = false
+	
+	print("Protection script fully stopped and cleaned up!")
+end
 
 -- Check if user is friends with authorized user
 local function isFriendOfAuthorized(userId)
@@ -367,7 +419,7 @@ local function stopAllSystems()
 	end
 	table.clear(loops)
 	
-	-- Disconnect all connections
+	-- Disconnect all connections  
 	for _, connection in pairs(connections) do
 		if connection then
 			connection:Disconnect()
@@ -389,8 +441,8 @@ local function stopAllSystems()
 	end
 end
 
--- Chat command handler
-LP.Chatted:Connect(function(message)
+-- Process chat commands
+local function processCommand(message)
 	-- Check if user can use commands
 	if not canUseCommands() then
 		return
@@ -398,6 +450,12 @@ LP.Chatted:Connect(function(message)
 	
 	local args = message:split(" ")
 	local command = args[1]:lower()
+	
+	-- .stop command to stop the script
+	if command == ".stop" then
+		cleanupScript()
+		return
+	end
 	
 	-- .protect username number
 	if command == ".protect" then
@@ -509,15 +567,29 @@ LP.Chatted:Connect(function(message)
 		-- Stop all systems
 		stopAllSystems()
 	end
+end
+
+-- Set up TextChatService listener
+task.spawn(function()
+	-- Wait for TextChatService to be ready
+	local textChannels = TextChatService:WaitForChild("TextChannels")
+	local generalChannel = textChannels:WaitForChild("RBXGeneral")
+	
+	-- Listen for messages
+	connections.messageReceived = generalChannel.MessageReceived:Connect(function(message)
+		if message.TextSource and message.TextSource.UserId == LP.UserId then
+			processCommand(message.Text)
+		end
+	end)
 end)
 
 -- Update friends cache when players join
-Players.PlayerAdded:Connect(function(player)
+connections.playerAdded = Players.PlayerAdded:Connect(function(player)
 	-- Clear cache entry to force recheck
 	friendsCache[player.UserId] = nil
 end)
 
-print("Advanced Protection Script Loaded!")
+print("Advanced Protection Script Loaded!2")
 print("Authorized user and their friends can use commands")
 print("Friends of authorized user are automatically safe from attacks")
 print("Commands:")
@@ -525,3 +597,4 @@ print("  .protect username number - Protect a player (1-3 for teleport target)")
 print("  .unprotect username - Stop protecting")
 print("  .protect whitelist username - Add to whitelist")
 print("  .protect unwhitelist username - Remove from whitelist")
+print("  .stop - Stop and clean up the entire script")
