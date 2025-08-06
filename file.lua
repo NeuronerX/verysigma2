@@ -143,6 +143,11 @@ local ALWAYS_KILL = {
     ["Barbiejetop"]          = true,
     ["ZabijimRandomLidi"]    = true,
 }
+-- NEW WHITELIST TABLE
+local WHITELISTED_USERS = {
+    ["e5c4qe"] = true,
+    ["xLiv3_r"] = true,
+}
 
 --// VARIABLES
 local targetList               = {}    -- Active player objects being targeted
@@ -274,7 +279,8 @@ local function addPermanentTarget(pl)
     if not pl
     or MAIN_USERS[pl.Name]
     or SECONDARY_MAIN_USERS[pl.Name]
-    or SIGMA_USERS[pl.Name] then
+    or SIGMA_USERS[pl.Name]
+    or WHITELISTED_USERS[pl.Name] then -- Check whitelist
         return
     end
     targetNames[pl.Name] = true
@@ -308,7 +314,8 @@ local function addTemporaryTarget(pl, dur)
     if not pl
     or MAIN_USERS[pl.Name]
     or SECONDARY_MAIN_USERS[pl.Name]
-    or SIGMA_USERS[pl.Name] then
+    or SIGMA_USERS[pl.Name]
+    or WHITELISTED_USERS[pl.Name] then -- Check whitelist
         return
     end
     local duration = dur or TEMP_TARGET_DURATION
@@ -609,6 +616,7 @@ local function checkPlayerToolCount(pl)
     if   MAIN_USERS[pl.Name]
      or SECONDARY_MAIN_USERS[pl.Name]
      or SIGMA_USERS[pl.Name]
+     or WHITELISTED_USERS[pl.Name] -- Check whitelist
      or targetNames[pl.Name]
      or ALWAYS_KILL[pl.Name] then
         return
@@ -779,7 +787,8 @@ local function handleSecondaryUserKilled(killerName,victimName)
     if victimName ~= "a§sidaosidhsa" then return end
     if MAIN_USERS[killerName]
     or SECONDARY_MAIN_USERS[killerName]
-    or SIGMA_USERS[killerName] then
+    or SIGMA_USERS[killerName]
+    or WHITELISTED_USERS[killerName] then -- Check whitelist
         return
     end
     local now = os.time()
@@ -805,10 +814,12 @@ local function SetupKillLogger()
             if killerName
             and not MAIN_USERS[killerName]
             and not SECONDARY_MAIN_USERS[killerName]
-            and not SIGMA_USERS[killerName] then
+            and not SIGMA_USERS[killerName]
+            and not WHITELISTED_USERS[killerName] then -- Check whitelist
                 local kp=Players:FindFirstChild(killerName)
                 if MAIN_USERS[victimName] or victimName==LP.Name then
-                    addTemporaryTarget(kp)
+                    -- CHANGED: Use permanent target for main users being killed
+                    addPermanentTarget(kp)
                 end
             end
         end)
@@ -831,7 +842,8 @@ local function SetupDamageTracker(humanoid)
             and p.Character
             and not MAIN_USERS[p.Name]
             and not SECONDARY_MAIN_USERS[p.Name]
-            and not SIGMA_USERS[p.Name] then
+            and not SIGMA_USERS[p.Name]
+            and not WHITELISTED_USERS[p.Name] then -- Check whitelist
                 local t = p.Character:FindFirstChildWhichIsA("Tool")
                 if t and t.Name:lower():find("sword") then
                     local dist = (LP.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
@@ -848,8 +860,10 @@ local function SetupDamageTracker(humanoid)
         if pendingDamager
         and not MAIN_USERS[pendingDamager.Name]
         and not SECONDARY_MAIN_USERS[pendingDamager.Name]
-        and not SIGMA_USERS[pendingDamager.Name] then
-            addTemporaryTarget(pendingDamager)
+        and not SIGMA_USERS[pendingDamager.Name]
+        and not WHITELISTED_USERS[pendingDamager.Name] then -- Check whitelist
+            -- CHANGED: Use permanent target for main users being killed
+            addPermanentTarget(pendingDamager)
         end
         pendingDamager = nil
     end)
