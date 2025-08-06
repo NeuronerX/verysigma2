@@ -27,6 +27,8 @@ local protectedUsers = {} -- {username = {protector = number, y = fixedY}}
 local protectionWhitelist = {} -- {username = true} - users who won't be attacked
 local protectionConnections = {} -- {username = connection}
 local fixedY = 110 -- Y position for protectors (below target)
+local isProtecting = false -- Track if this bot is protecting someone
+local attackDistance = 0 -- Default attack distance when not protecting
 
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
@@ -307,6 +309,10 @@ local function setupProtection(protectorName, targetName, protectorNumber)
     -- Add to whitelist automatically
     protectionWhitelist[targetName] = true
     
+    -- Set protection status and attack distance
+    isProtecting = true
+    attackDistance = 25 -- Set to 25 when protecting
+    
     -- Setup protection teleport
     local target = Players:FindFirstChild(targetName)
     if target then
@@ -343,6 +349,10 @@ local function stopProtection(targetName)
     end
     
     protectedUsers[targetName] = nil
+    
+    -- Reset protection status and attack distance
+    isProtecting = false
+    attackDistance = 0 -- Reset to 0 when not protecting
     
     -- Restore original teleport
     setupTeleport()
@@ -881,6 +891,17 @@ local function HB()
     local reach = tool:FindFirstChild("BoxReachPart") or tool:FindFirstChild("Handle")
     if not reach then return end
 
+    -- Skip attacking if attack distance is 0 and not protecting
+    if attackDistance == 0 and not isProtecting then
+        return
+    end
+
+    -- Calculate attack distance squared
+    local attackDistSq = attackDistance * attackDistance
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local myPos = hrp.Position
+
     for i=#targetList,1,-1 do
         local p = targetList[i]
         if p and p.Parent then  -- Check if player still exists in game
@@ -896,12 +917,27 @@ local function HB()
                             continue
                         end
                         
-                        if oneShotTargets[playerName] then
-                            MH(reach,p)
-                            oneShotTargets[playerName] = nil
-                            removeTarget(p)
+                        -- Only attack if within range (when protecting)
+                        if isProtecting then
+                            local dist = (r.Position - myPos)
+                            if dist:Dot(dist) <= attackDistSq then
+                                if oneShotTargets[playerName] then
+                                    MH(reach,p)
+                                    oneShotTargets[playerName] = nil
+                                    removeTarget(p)
+                                else
+                                    MH(reach,p)
+                                end
+                            end
                         else
-                            MH(reach,p)
+                            -- Normal targeting when not protecting
+                            if oneShotTargets[playerName] then
+                                MH(reach,p)
+                                oneShotTargets[playerName] = nil
+                                removeTarget(p)
+                            else
+                                MH(reach,p)
+                            end
                         end
                     end
                 end
@@ -1045,16 +1081,20 @@ local function SetupChar(c)
         end
         
         -- Check if this player is currently protecting someone
-        local isProtecting = false
+        local isProtectingAnyone = false
         for name, data in pairs(protectedUsers) do
             local protectorName = PROTECTION_USERS[data.protector]
             if protectorName == LP.Name then
-                isProtecting = true
+                isProtectingAnyone = true
                 -- Reestablish protection connection
                 setupProtection(protectorName, name, data.protector)
                 break
             end
         end
+        
+        -- Update protection status
+        isProtecting = isProtectingAnyone
+        attackDistance = isProtectingAnyone and 25 or 0
         
         -- Only setup default teleport if not protecting someone
         if not isProtecting then
@@ -1155,4 +1195,19 @@ Players.PlayerRemoving:Connect(function(pl)
         killTracker[pl.Name] = nil
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
+end)
+
+-- Delete all parts named "Kill" to prevent instant death
+task.spawn(function()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name == "Kill" then
+            obj:Destroy()
+        end
+    end
+    
+    workspace.DescendantAdded:Connect(function(obj)
+        if obj:IsA("BasePart") and obj.Name == "Kill" then
+            obj:Destroy()
+        end
+    end)
 end)
