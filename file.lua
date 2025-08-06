@@ -26,9 +26,14 @@ local oldScriptActive = true -- Track if old script features are active
 local protectedUsers = {} -- {username = {protector = number, y = fixedY}}
 local protectionWhitelist = {} -- {username = true} - users who won't be attacked
 local protectionConnections = {} -- {username = connection}
+local currentlyProtecting = nil -- The username this player is protecting
 local fixedY = 110 -- Y position for protectors (below target)
-local isProtecting = false -- Track if this bot is protecting someone
-local attackDistance = 0 -- Default attack distance when not protecting
+
+--// ATTACK SETTINGS
+local normalDist = 0 -- Default attack distance when not protecting
+local protectDist = 25 -- Attack distance when protecting
+local currentDist = normalDist -- Current attack distance
+local DistSq = currentDist * currentDist -- Squared for optimization
 
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
@@ -310,8 +315,9 @@ local function setupProtection(protectorName, targetName, protectorNumber)
     protectionWhitelist[targetName] = true
     
     -- Set protection status and attack distance
-    isProtecting = true
-    attackDistance = 25 -- Set to 25 when protecting
+    currentlyProtecting = targetName
+    currentDist = protectDist
+    DistSq = currentDist * currentDist
     
     -- Setup protection teleport
     local target = Players:FindFirstChild(targetName)
@@ -349,10 +355,11 @@ local function stopProtection(targetName)
     end
     
     protectedUsers[targetName] = nil
+    currentlyProtecting = nil
     
     -- Reset protection status and attack distance
-    isProtecting = false
-    attackDistance = 0 -- Reset to 0 when not protecting
+    currentDist = normalDist
+    DistSq = currentDist * currentDist
     
     -- Restore original teleport
     setupTeleport()
@@ -478,27 +485,14 @@ local function processChatCommand(msg)
             local targetName = parts[3]
             local targetPlayer = findPlayerByPartialName(targetName)
             if targetPlayer then
-                protectionWhitelist[targetPlayer.Name] = true
-                
-                -- Remove from targets if they were targeted
-                if targetNames[targetPlayer.Name] then
-                    targetNames[targetPlayer.Name] = nil
-                    for i=#targetList,1,-1 do
-                        if targetList[i] == targetPlayer then
-                            table.remove(targetList, i)
-                        end
-                    end
-                end
+                sharedRevenge.Value = "WHITELIST:" .. targetPlayer.Name
             end
             return
         elseif subCmd == "unwhitelist" and parts[3] then
             local targetName = parts[3]
             local targetPlayer = findPlayerByPartialName(targetName)
             if targetPlayer then
-                -- Don't unwhitelist active protection targets
-                if not protectedUsers[targetPlayer.Name] then
-                    protectionWhitelist[targetPlayer.Name] = nil
-                end
+                sharedRevenge.Value = "UNWHITELIST:" .. targetPlayer.Name
             end
             return
         end
@@ -617,6 +611,28 @@ sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
     elseif val:sub(1,10) == "UNPROTECT:" then
         local targetName = val:sub(11)
         stopProtection(targetName)
+        return
+    elseif val:sub(1,10) == "WHITELIST:" then
+        local targetName = val:sub(11)
+        protectionWhitelist[targetName] = true
+        
+        -- Remove from targets if they were targeted
+        local targetPlayer = Players:FindFirstChild(targetName)
+        if targetPlayer and targetNames[targetName] then
+            targetNames[targetName] = nil
+            for i=#targetList,1,-1 do
+                if targetList[i] == targetPlayer then
+                    table.remove(targetList, i)
+                end
+            end
+        end
+        return
+    elseif val:sub(1,12) == "UNWHITELIST:" then
+        local targetName = val:sub(13)
+        -- Don't unwhitelist active protection targets
+        if not protectedUsers[targetName] and targetName ~= currentlyProtecting then
+            protectionWhitelist[targetName] = nil
+        end
         return
     end
 
@@ -827,125 +843,179 @@ end
 -- Constant sword equipping (ALWAYS ACTIVE)
 RunService.RenderStepped:Connect(forceEquip)
 
-local function CreateBoxReach(tool)
-    if not tool or not tool:IsA("Tool") then return end
-    local h = tool:FindFirstChild("Handle")
-    if not h or h:FindFirstChild("BoxReachPart") then return end
-    local p = Instance.new("Part")
-    p.Name         = "BoxReachPart"
-    p.Size         = Vector3.new(15,15,15)
-    p.Transparency = 1
-    p.CanCollide   = false
-    p.Massless     = true
-    p.Anchored     = false
-    p.Parent       = h
-    local w = Instance.new("WeldConstraint", p)
-    w.Part0, w.Part1 = h, p
-end
-
 --------------------------------------------------------------------------------
--- DAMAGE & KILLLOOP (+ one‐shot)
+-- ATTACK SYSTEM (USING YOUR UPDATED CODE)
 --------------------------------------------------------------------------------
--- Check if firetouchinterest exists before using it
-local firetouchinterest = firetouchinterest
-if not firetouchinterest then
-    -- Fallback function if firetouchinterest doesn't exist
-    firetouchinterest = function(a, b, state)
-        -- This won't do anything but prevents the error
-        warn("firetouchinterest not available")
-    end
-end
+local A = {} -- All players
+local K = {} -- Kill tracking
 
-local function FT(a,b)
-    for _=1,FT_TIMES do
-        pcall(function()
-            firetouchinterest(a,b,0)
-            firetouchinterest(a,b,1)
-        end)
-    end
-end
-
-local function MH(toolPart, pl)
-    -- Skip if player is protected/whitelisted
-    if protectionWhitelist[pl.Name] then return end
-
-    local c = pl.Character if not c then return end
-    local h = c:FindFirstChildOfClass("Humanoid")
-    local r = c:FindFirstChild("HumanoidRootPart")
-    if not (h and r and h.Health>0) then return end
-    pcall(function() toolPart.Parent:Activate() end)
-    for _=1,DMG_TIMES do
-        for _, v in ipairs(c:GetDescendants()) do
-            if v:IsA("BasePart") then FT(toolPart,v) end
+local function CRB(x)
+    if x:IsA("Tool") and x:FindFirstChild("Handle") then
+        local h = x.Handle
+        if not h:FindFirstChild("BoxReachPart") then
+            local p = Instance.new("Part")
+            p.Name = "BoxReachPart"
+            p.Size = Vector3.new(currentDist, currentDist, currentDist)
+            p.Transparency = 1
+            p.CanCollide = false
+            p.Massless = true
+            p.Parent = h
+            local w = Instance.new("WeldConstraint")
+            w.Part0 = h
+            w.Part1 = p
+            w.Parent = p
         end
     end
 end
 
-local function HB()
-    if not oldScriptActive then return end -- Don't attack if new script is active
-    
-    forceEquip()
-    local c = LP.Character if not c then return end
-    local tool = c:FindFirstChildWhichIsA("Tool") if not tool then return end
-    CreateBoxReach(tool)
-    local reach = tool:FindFirstChild("BoxReachPart") or tool:FindFirstChild("Handle")
-    if not reach then return end
+local function FT(a, b)
+    for _ = 1, FT_TIMES do
+        pcall(function()
+            firetouchinterest(a, b, 0)
+            firetouchinterest(a, b, 1)
+        end)
+    end
+end
 
-    -- Skip attacking if attack distance is 0 and not protecting
-    if attackDistance == 0 and not isProtecting then
+local function KL(p, t)
+    if K[p] then return end
+    K[p] = true
+    while true do
+        local lc = LP.Character
+        local tc = p.Character
+        if not (lc and tc) then break end
+        local tw = lc:FindFirstChildWhichIsA("Tool")
+        local th = tc:FindFirstChildOfClass("Humanoid")
+        if not (tw and tw.Parent == lc and t.Parent and th and th.Health > 0) then break end
+        for _, v in ipairs(tc:GetDescendants()) do
+            if v:IsA("BasePart") then
+                firetouchinterest(t, v, 0)
+                firetouchinterest(t, v, 1)
+            end
+        end
+        task.wait()
+    end
+    K[p] = nil
+end
+
+local function PC(c)
+    for _, v in ipairs(c:GetDescendants()) do
+        CRB(v)
+    end
+    c.ChildAdded:Connect(CRB)
+end
+
+local function MH(toolPart, plr)
+    -- Skip if player is protected/whitelisted
+    if protectionWhitelist[plr.Name] or plr.Name == currentlyProtecting then
         return
     end
 
-    -- Calculate attack distance squared
-    local attackDistSq = attackDistance * attackDistance
+    local c = plr.Character
+    if not c then return end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    local r = c:FindFirstChild("HumanoidRootPart")
+    if not (h and r and h.Health > 0) then return end
+    pcall(function() toolPart.Parent:Activate() end)
+    
+    for _ = 1, DMG_TIMES do
+        for _, v in ipairs(c:GetDescendants()) do
+            if v:IsA("BasePart") then
+                FT(toolPart, v)
+            end
+        end
+    end
+    
+    task.spawn(function()
+        KL(plr, toolPart)
+    end)
+}
+
+local function HB()
+    if not oldScriptActive then return end -- Don't attack if new script is active
+    
+    local c = LP.Character
+    if not c then return end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    local myPos = hrp.Position
-
-    for i=#targetList,1,-1 do
-        local p = targetList[i]
-        if p and p.Parent then  -- Check if player still exists in game
-            if p.Character then
-                local h = p.Character:FindFirstChildOfClass("Humanoid")
-                local r = p.Character:FindFirstChild("HumanoidRootPart")
-                if h and r and h.Health>0 then
-                    -- Use pcall to safely access p.Name
-                    local success, playerName = pcall(function() return p.Name end)
-                    if success then
-                        -- Skip if player is protected/whitelisted
-                        if protectionWhitelist[playerName] then
-                            continue
-                        end
+    local pos = hrp.Position
+    
+    for _, t in ipairs(c:GetDescendants()) do
+        if t:IsA("Tool") then
+            local b = t:FindFirstChild("BoxReachPart") or t:FindFirstChild("Handle")
+            if b then
+                for _, p in ipairs(A) do
+                    if p ~= LP and p.Character then
+                        local rp = p.Character:FindFirstChild("HumanoidRootPart")
+                        local hm = p.Character:FindFirstChildOfClass("Humanoid")
                         
-                        -- Only attack if within range (when protecting)
-                        if isProtecting then
-                            local dist = (r.Position - myPos)
-                            if dist:Dot(dist) <= attackDistSq then
-                                if oneShotTargets[playerName] then
-                                    MH(reach,p)
-                                    oneShotTargets[playerName] = nil
-                                    removeTarget(p)
-                                else
-                                    MH(reach,p)
-                                end
+                        if rp and hm and hm.Health > 0 then
+                            -- Skip if protected or whitelisted
+                            if protectionWhitelist[p.Name] or p.Name == currentlyProtecting then
+                                continue
                             end
-                        else
-                            -- Normal targeting when not protecting
-                            if oneShotTargets[playerName] then
-                                MH(reach,p)
-                                oneShotTargets[playerName] = nil
-                                removeTarget(p)
+                            
+                            -- Check if player is in target list or one shot target
+                            local isTarget = table.find(targetList, p) ~= nil
+                            local isOneShot = oneShotTargets[p.Name]
+                            
+                            -- If we're protecting and have distance limits
+                            if currentlyProtecting then
+                                local d = rp.Position - pos
+                                if d:Dot(d) <= DistSq and (isTarget or isOneShot) then
+                                    if isOneShot then
+                                        MH(b, p)
+                                        oneShotTargets[p.Name] = nil
+                                        removeTarget(p)
+                                    else
+                                        MH(b, p)
+                                    end
+                                end
                             else
-                                MH(reach,p)
+                                -- Normal targeting when not protecting (no distance limit)
+                                if isTarget or isOneShot then
+                                    if isOneShot then
+                                        MH(b, p)
+                                        oneShotTargets[p.Name] = nil
+                                        removeTarget(p)
+                                    else
+                                        MH(b, p)
+                                    end
+                                end
                             end
                         end
                     end
                 end
             end
         end
-        -- Don't remove from list - let it stay for persistence
     end
 end
+
+local CN
+local function SK()
+    if CN then CN:Disconnect() end
+    CN = RunService.Heartbeat:Connect(HB)
+end
+
+local function UP()
+    table.clear(A)
+    for _, p in ipairs(Players:GetPlayers()) do
+        table.insert(A, p)
+    end
+end
+
+Players.PlayerAdded:Connect(function(p)
+    table.insert(A, p)
+})
+
+Players.PlayerRemoving:Connect(function(p)
+    for i, v in ipairs(A) do
+        if v == p then
+            table.remove(A, i)
+            break
+        end
+    end
+})
 
 --------------------------------------------------------------------------------
 -- TELEPORTATION + FALL PREVENTION
@@ -1086,20 +1156,20 @@ local function SetupChar(c)
             local protectorName = PROTECTION_USERS[data.protector]
             if protectorName == LP.Name then
                 isProtectingAnyone = true
+                currentlyProtecting = name
+                -- Update attack distance settings
+                currentDist = protectDist
+                DistSq = currentDist * currentDist
                 -- Reestablish protection connection
                 setupProtection(protectorName, name, data.protector)
                 break
             end
         end
         
-        -- Update protection status
-        isProtecting = isProtectingAnyone
-        attackDistance = isProtectingAnyone and 25 or 0
-        
         -- Only setup default teleport if not protecting someone
-        if not isProtecting then
+        if not isProtectingAnyone then
             setupTeleport()
-        end
+        }
         
         -- Immediate equip attempt (ALWAYS ACTIVE)
         forceEquip()
@@ -1123,14 +1193,11 @@ local function SetupChar(c)
             end
         end)
         
-        for _, t in ipairs(c:GetChildren()) do
-            if t:IsA("Tool") then CreateBoxReach(t) end
-        end
+        PC(c) -- Process character for box reach
         
         -- Only setup killloop if old script is active
         if oldScriptActive then
-            if CN then CN:Disconnect() end
-            CN = RunService.Heartbeat:Connect(HB)
+            SK() -- Setup the kill loop
             SetupDamageTracker(h)
         end
     end)
@@ -1142,6 +1209,7 @@ LP.CharacterAdded:Connect(function(char)
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
         forceEquip()
+        SetupChar(char)
     end)
 end)
 
@@ -1151,9 +1219,9 @@ end)
 initializeKillCounter()
 setupTextChatCommandHandler()
 SetupKillLogger()
+UP() -- Initialize player list
 
 if LP.Character then SetupChar(LP.Character) end
-LP.CharacterAdded:Connect(SetupChar)
 
 -- Add existing players that should be targeted
 if oldScriptActive then
