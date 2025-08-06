@@ -22,17 +22,7 @@ local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum pl
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
 
---// PROTECT MODE VARIABLES
-local protectActive = false
-local protectTarget = nil
-local protectConnection = nil
-local protectKillConnection = nil
-local noclipConnection = nil
-local PROTECT_DISTANCE = 8 -- Kill distance in protect mode
-local PROTECT_OFFSET = 5 -- Studs below protected player
-
 local function setupTeleport()
-    if protectActive then return end -- Don't teleport during protect
     if teleportConnection then teleportConnection:Disconnect() end
     local cf = teleportTargets[LP.Name]
     if cf then
@@ -208,187 +198,6 @@ end
 -- Alias for chat handler compatibility
 local executeActivate = execute
 
---// HELPER FUNCTIONS
-local function getRoot(char)
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
---// NOCLIP FUNCTIONS
-local function enableNoclip()
-    if noclipConnection then return end
-    noclipConnection = RunService.Stepped:Connect(function()
-        local char = LP.Character
-        if char and protectActive then
-            for _, child in pairs(char:GetDescendants()) do
-                if child:IsA("BasePart") and child.CanCollide == true then
-                    child.CanCollide = false
-                end
-            end
-        end
-    end)
-end
-
-local function disableNoclip()
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
-    end
-    -- Re-enable collision
-    local char = LP.Character
-    if char then
-        for _, child in pairs(char:GetDescendants()) do
-            if child:IsA("BasePart") then
-                child.CanCollide = true
-            end
-        end
-    end
-end
-
---// PROTECT MODE FUNCTIONS
-local function CreateProtectBoxReach(tool)
-    if not tool or not tool:IsA("Tool") then return end
-    local h = tool:FindFirstChild("Handle")
-    if not h or h:FindFirstChild("ProtectBoxReachPart") then return end
-    local p = Instance.new("Part")
-    p.Name = "ProtectBoxReachPart"
-    p.Size = Vector3.new(PROTECT_DISTANCE, PROTECT_DISTANCE, PROTECT_DISTANCE)
-    p.Transparency = 1
-    p.CanCollide = false
-    p.Massless = true
-    p.Anchored = false
-    p.Parent = h
-    local w = Instance.new("WeldConstraint")
-    w.Part0 = h
-    w.Part1 = p
-    w.Parent = p
-end
-
-local function stopProtect()
-    protectActive = false
-    protectTarget = nil
-    
-    if protectConnection then
-        protectConnection:Disconnect()
-        protectConnection = nil
-    end
-    
-    if protectKillConnection then
-        protectKillConnection:Disconnect()
-        protectKillConnection = nil
-    end
-    
-    -- Disable noclip
-    disableNoclip()
-    
-    -- Return to normal teleport position
-    setupTeleport()
-end
-
-local function startProtect(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then return end
-    
-    -- Stop any existing protect
-    stopProtect()
-    
-    -- Disable normal teleport
-    if teleportConnection then
-        teleportConnection:Disconnect()
-        teleportConnection = nil
-    end
-    
-    protectActive = true
-    protectTarget = targetPlayer
-    
-    -- Enable noclip
-    enableNoclip()
-    
-    -- Main protect teleport loop
-    protectConnection = RunService.Heartbeat:Connect(function()
-        if not protectActive or not protectTarget or not Players:FindFirstChild(protectTarget.Name) then
-            stopProtect()
-            return
-        end
-        
-        local myChar = LP.Character
-        local myRoot = getRoot(myChar)
-        local targetChar = protectTarget.Character
-        local targetRoot = getRoot(targetChar)
-        
-        if myRoot and targetRoot then
-            -- Teleport below the protected player
-            local newPos = targetRoot.Position - Vector3.new(0, PROTECT_OFFSET, 0)
-            myRoot.CFrame = CFrame.new(newPos)
-            myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        end
-    end)
-    
-    -- Protect kill loop - kills nearby players except protected and whitelisted
-    protectKillConnection = RunService.Heartbeat:Connect(function()
-        if not protectActive then return end
-        
-        forceEquip() -- Make sure sword is equipped
-        
-        local myChar = LP.Character
-        if not myChar then return end
-        
-        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-        if not myRoot then return end
-        
-        local tool = myChar:FindFirstChildWhichIsA("Tool")
-        if not tool then return end
-        
-        -- Create box reach for protect mode
-        CreateProtectBoxReach(tool)
-        
-        local reach = tool:FindFirstChild("ProtectBoxReachPart") or tool:FindFirstChild("Handle")
-        if not reach then return end
-        
-        local myPos = myRoot.Position
-        
-        -- Check all players
-        for _, player in ipairs(Players:GetPlayers()) do
-            -- Skip if it's us
-            if player == LP then continue end
-            
-            -- Skip if it's the protected player
-            if player == protectTarget then continue end
-            
-            -- Skip if it's a main user or sigma user
-            if MAIN_USERS[player.Name] or SIGMA_USERS[player.Name] or SECONDARY_MAIN_USERS[player.Name] then
-                continue
-            end
-            
-            local pChar = player.Character
-            if pChar then
-                local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-                local pHum = pChar:FindFirstChildOfClass("Humanoid")
-                
-                if pRoot and pHum and pHum.Health > 0 then
-                    -- Check distance
-                    local distance = (pRoot.Position - myPos).Magnitude
-                    
-                    if distance <= PROTECT_DISTANCE then
-                        -- Activate tool
-                        pcall(function() tool:Activate() end)
-                        
-                        -- Fire touch interest on all parts
-                        for _, part in ipairs(pChar:GetDescendants()) do
-                            if part:IsA("BasePart") then
-                                for i = 1, FT_TIMES do
-                                    pcall(function()
-                                        firetouchinterest(reach, part, 0)
-                                        firetouchinterest(reach, part, 1)
-                                    end)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
-end
-
 --------------------------------------------------------------------------------
 -- FPS BOOSTER
 --------------------------------------------------------------------------------
@@ -517,40 +326,26 @@ local function addTemporaryTarget(pl, dur)
 end
 
 --------------------------------------------------------------------------------
--- NAME MATCHING (AUTOCORRECTS PARTIAL NAMES)
+-- NAME MATCHING
 --------------------------------------------------------------------------------
 local function findPlayerByPartialName(partial)
     if not partial or partial == "" then return nil end
     partial = partial:lower()
-    
-    -- First, try exact match
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower() == partial then
             return p
         end
     end
-    
-    -- Second, try matching from start of name
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower():sub(1,#partial) == partial then
             return p
         end
     end
-    
-    -- Third, try finding partial anywhere in name
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name:lower():find(partial,1,true) then
             return p
         end
     end
-    
-    -- Fourth, try matching display name if it exists
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.DisplayName and p.DisplayName:lower():find(partial,1,true) then
-            return p
-        end
-    end
-    
     return nil
 end
 
@@ -580,17 +375,7 @@ local function processChatCommand(msg)
         end
     end
     
-    -- Handle unprotect without name
-    if cmd == "unprotect" and not name then
-        if protectActive then
-            stopProtect()
-        end
-        return
-    end
-    
     if not cmd or not name then return end
-    
-    -- Find player by partial name (autocorrects/matches partial names)
     local pl = findPlayerByPartialName(name)
     if not pl then return end
 
@@ -602,19 +387,6 @@ local function processChatCommand(msg)
         oneShotTargets[pl.Name] = true
         if not targetNames[pl.Name] then
             table.insert(targetList, pl)
-        end
-    elseif cmd == "protect" then
-        -- Protect command - teleports below player and kills nearby enemies
-        if protectActive and protectTarget == pl then
-            -- Stop protecting if already protecting this player
-            stopProtect()
-        else
-            startProtect(pl)
-        end
-    elseif cmd == "unprotect" then
-        -- Stop protecting specific player
-        if protectActive and protectTarget == pl then
-            stopProtect()
         end
     end
 end
@@ -868,10 +640,10 @@ end)
 --------------------------------------------------------------------------------
 -- AUTOEQUIP & BOXREACH
 --------------------------------------------------------------------------------
-function forceEquip()
+local function forceEquip()
     local char = LP.Character
     if not char then return end
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
     if not humanoid then return end
     local sword = LP.Backpack:FindFirstChild("Sword")
     if sword and not char:FindFirstChild("Sword") then
@@ -935,7 +707,6 @@ end
 
 local function HB()
     if not oldScriptActive then return end -- Don't attack if new script is active
-    if protectActive then return end -- Don't attack during protect (protect has its own kill loop)
     
     forceEquip()
     local c = LP.Character if not c then return end
@@ -978,6 +749,20 @@ local teleportTargets = {
     ["Cubot_Nova2"]       = CFrame.new(7122,4705,4729),
     ["Cubot_Nova1"]       = CFrame.new(7132,4605,4529),
 }
+
+local function setupTeleport()
+    if teleportConnection then teleportConnection:Disconnect() end
+    local cf = teleportTargets[LP.Name]
+    if cf then
+        teleportConnection = RunService.Heartbeat:Connect(function()
+            local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            if r then
+                r.CFrame = cf
+                r.AssemblyLinearVelocity = Vector3.new(0,0,0)
+            end
+        end)
+    end
+end
 
 --------------------------------------------------------------------------------
 -- SECONDARY USER KILLTRACKER & LOGGER
@@ -1082,10 +867,8 @@ local function SetupChar(c)
             killTracker[LP.Name].lastRespawn = os.time()
         end
         
-        -- Setup teleport immediately for main users (ALWAYS ACTIVE) - unless protecting
-        if not protectActive then
-            setupTeleport()
-        end
+        -- Setup teleport immediately for main users (ALWAYS ACTIVE)
+        setupTeleport()
         
         -- Immediate equip attempt (ALWAYS ACTIVE)
         forceEquip()
