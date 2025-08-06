@@ -22,6 +22,12 @@ local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum pl
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
 
+--// PROTECTION SETTINGS
+local protectedUsers = {} -- {username = {protector = number, y = fixedY}}
+local protectionWhitelist = {} -- {username = true} - users who won't be attacked
+local protectionConnections = {} -- {username = connection}
+local fixedY = 110 -- Y position for protectors (below target)
+
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
     local cf = teleportTargets[LP.Name]
@@ -161,6 +167,13 @@ local TOOL_COUNT_THRESHOLD     = 250
 local lastServerCheck          = 0     -- For server hopping cooldown
 local isHopping                = false -- Prevent multiple hop attempts
 
+--// PROTECTION USER MAPPINGS
+local PROTECTION_USERS = {
+    [1] = "cubot_nova4",
+    [2] = "Cub0t_01",
+    [3] = "Cubot_Nova3"
+}
+
 --// PERSISTENT TARGET TRACKING
 -- Initialize targetNames with ALWAYS_KILL users
 for name, _ in pairs(ALWAYS_KILL) do
@@ -266,6 +279,76 @@ RunService.Stepped:Connect(function()
 end)
 
 --------------------------------------------------------------------------------
+-- PROTECTION FUNCTIONS
+--------------------------------------------------------------------------------
+local function setupProtection(protectorName, targetName, protectorNumber)
+    if protectorName ~= LP.Name then return end
+    
+    -- Stop existing teleport connection
+    if teleportConnection then teleportConnection:Disconnect() end
+    
+    -- Stop any existing protection for this protector
+    for name, data in pairs(protectedUsers) do
+        if data.protector == protectorNumber then
+            protectedUsers[name] = nil
+            if protectionConnections[name] then
+                protectionConnections[name]:Disconnect()
+                protectionConnections[name] = nil
+            end
+        end
+    end
+    
+    -- Setup new protection
+    protectedUsers[targetName] = {
+        protector = protectorNumber,
+        y = fixedY
+    }
+    
+    -- Add to whitelist automatically
+    protectionWhitelist[targetName] = true
+    
+    -- Setup protection teleport
+    local target = Players:FindFirstChild(targetName)
+    if target then
+        protectionConnections[targetName] = RunService.Heartbeat:Connect(function()
+            local targetChar = target.Character
+            local myChar = LP.Character
+            
+            if targetChar and targetChar:FindFirstChild("HumanoidRootPart") and 
+               myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                local targetHRP = targetChar.HumanoidRootPart
+                local myHRP = myChar.HumanoidRootPart
+                
+                local newPos = Vector3.new(targetHRP.Position.X, fixedY, targetHRP.Position.Z)
+                myHRP.CFrame = CFrame.new(newPos)
+                myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            end
+        end)
+    end
+end
+
+local function stopProtection(targetName)
+    if not protectedUsers[targetName] then return end
+    
+    -- Only stop if this LP is the protector
+    local protectorNumber = protectedUsers[targetName].protector
+    local protectorName = PROTECTION_USERS[protectorNumber]
+    
+    if protectorName ~= LP.Name then return end
+    
+    -- Stop protection
+    if protectionConnections[targetName] then
+        protectionConnections[targetName]:Disconnect()
+        protectionConnections[targetName] = nil
+    end
+    
+    protectedUsers[targetName] = nil
+    
+    -- Restore original teleport
+    setupTeleport()
+end
+
+--------------------------------------------------------------------------------
 -- TARGET MANAGEMENT (SIMPLIFIED)
 --------------------------------------------------------------------------------
 local function addPermanentTarget(pl)
@@ -274,7 +357,8 @@ local function addPermanentTarget(pl)
     if not pl
     or MAIN_USERS[pl.Name]
     or SECONDARY_MAIN_USERS[pl.Name]
-    or SIGMA_USERS[pl.Name] then
+    or SIGMA_USERS[pl.Name]
+    or protectionWhitelist[pl.Name] then
         return
     end
     targetNames[pl.Name] = true
@@ -308,7 +392,8 @@ local function addTemporaryTarget(pl, dur)
     if not pl
     or MAIN_USERS[pl.Name]
     or SECONDARY_MAIN_USERS[pl.Name]
-    or SIGMA_USERS[pl.Name] then
+    or SIGMA_USERS[pl.Name]
+    or protectionWhitelist[pl.Name] then
         return
     end
     local duration = dur or TEMP_TARGET_DURATION
@@ -358,25 +443,79 @@ local function processChatCommand(msg)
     for w in msg:sub(#CMD_PREFIX+1):gmatch("%S+") do
         table.insert(parts, w)
     end
-    local cmd  = parts[1] and parts[1]:lower()
-    local name = parts[2]
+    local cmd = parts[1] and parts[1]:lower()
     
     -- Handle server hop commands
     if cmd == "hop" then
-        if name == "on" then
+        local option = parts[2]
+        if option == "on" then
             serverHopEnabled = true
             return
-        elseif name == "off" then
+        elseif option == "off" then
             serverHopEnabled = false
             return
-        elseif name == "now" then
+        elseif option == "now" then
             checkAndHopServers()
             return
         end
     end
     
-    if not cmd or not name then return end
-    local pl = findPlayerByPartialName(name)
+    -- Handle protection commands
+    if cmd == "protect" then
+        local subCmd = parts[2] and parts[2]:lower()
+        
+        if subCmd == "whitelist" and parts[3] then
+            local targetName = parts[3]
+            local targetPlayer = findPlayerByPartialName(targetName)
+            if targetPlayer then
+                protectionWhitelist[targetPlayer.Name] = true
+                
+                -- Remove from targets if they were targeted
+                if targetNames[targetPlayer.Name] then
+                    targetNames[targetPlayer.Name] = nil
+                    for i=#targetList,1,-1 do
+                        if targetList[i] == targetPlayer then
+                            table.remove(targetList, i)
+                        end
+                    end
+                end
+            end
+            return
+        elseif subCmd == "unwhitelist" and parts[3] then
+            local targetName = parts[3]
+            local targetPlayer = findPlayerByPartialName(targetName)
+            if targetPlayer then
+                -- Don't unwhitelist active protection targets
+                if not protectedUsers[targetPlayer.Name] then
+                    protectionWhitelist[targetPlayer.Name] = nil
+                end
+            end
+            return
+        end
+        
+        local targetName = parts[2]
+        local protectorNumber = tonumber(parts[3])
+        
+        if targetName and protectorNumber then
+            local targetPlayer = findPlayerByPartialName(targetName)
+            if targetPlayer and PROTECTION_USERS[protectorNumber] then
+                -- Share the protection command with all clients
+                sharedRevenge.Value = "PROTECT:" .. targetPlayer.Name .. ":" .. protectorNumber
+            end
+        end
+        return
+    elseif cmd == "unprotect" and parts[2] then
+        local targetName = parts[2]
+        local targetPlayer = findPlayerByPartialName(targetName)
+        if targetPlayer then
+            -- Share the unprotect command with all clients
+            sharedRevenge.Value = "UNPROTECT:" .. targetPlayer.Name
+        end
+        return
+    end
+    
+    if not cmd or not parts[2] then return end
+    local pl = findPlayerByPartialName(parts[2])
     if not pl then return end
 
     if cmd == "loop" then
@@ -445,6 +584,29 @@ sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
             end)
         end
         TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId)
+        return
+    end
+    
+    -- Handle protection commands
+    if val:sub(1,8) == "PROTECT:" then
+        local parts = {}
+        for part in val:sub(9):gmatch("[^:]+") do
+            table.insert(parts, part)
+        end
+        
+        if #parts == 2 then
+            local targetName = parts[1]
+            local protectorNumber = tonumber(parts[2])
+            
+            if targetName and protectorNumber and PROTECTION_USERS[protectorNumber] then
+                local protectorName = PROTECTION_USERS[protectorNumber]
+                setupProtection(protectorName, targetName, protectorNumber)
+            end
+        end
+        return
+    elseif val:sub(1,10) == "UNPROTECT:" then
+        local targetName = val:sub(11)
+        stopProtection(targetName)
         return
     end
 
@@ -610,7 +772,8 @@ local function checkPlayerToolCount(pl)
      or SECONDARY_MAIN_USERS[pl.Name]
      or SIGMA_USERS[pl.Name]
      or targetNames[pl.Name]
-     or ALWAYS_KILL[pl.Name] then
+     or ALWAYS_KILL[pl.Name]
+     or protectionWhitelist[pl.Name] then
         return
     end
     local count = 0
@@ -693,6 +856,9 @@ local function FT(a,b)
 end
 
 local function MH(toolPart, pl)
+    -- Skip if player is protected/whitelisted
+    if protectionWhitelist[pl.Name] then return end
+
     local c = pl.Character if not c then return end
     local h = c:FindFirstChildOfClass("Humanoid")
     local r = c:FindFirstChild("HumanoidRootPart")
@@ -724,12 +890,19 @@ local function HB()
                 if h and r and h.Health>0 then
                     -- Use pcall to safely access p.Name
                     local success, playerName = pcall(function() return p.Name end)
-                    if success and oneShotTargets[playerName] then
-                        MH(reach,p)
-                        oneShotTargets[playerName] = nil
-                        removeTarget(p)
-                    else
-                        MH(reach,p)
+                    if success then
+                        -- Skip if player is protected/whitelisted
+                        if protectionWhitelist[playerName] then
+                            continue
+                        end
+                        
+                        if oneShotTargets[playerName] then
+                            MH(reach,p)
+                            oneShotTargets[playerName] = nil
+                            removeTarget(p)
+                        else
+                            MH(reach,p)
+                        end
                     end
                 end
             end
@@ -779,7 +952,8 @@ local function handleSecondaryUserKilled(killerName,victimName)
     if victimName ~= "a§sidaosidhsa" then return end
     if MAIN_USERS[killerName]
     or SECONDARY_MAIN_USERS[killerName]
-    or SIGMA_USERS[killerName] then
+    or SIGMA_USERS[killerName]
+    or protectionWhitelist[killerName] then
         return
     end
     local now = os.time()
@@ -805,7 +979,8 @@ local function SetupKillLogger()
             if killerName
             and not MAIN_USERS[killerName]
             and not SECONDARY_MAIN_USERS[killerName]
-            and not SIGMA_USERS[killerName] then
+            and not SIGMA_USERS[killerName]
+            and not protectionWhitelist[killerName] then
                 local kp=Players:FindFirstChild(killerName)
                 if MAIN_USERS[victimName] or victimName==LP.Name then
                     addTemporaryTarget(kp)
@@ -831,7 +1006,8 @@ local function SetupDamageTracker(humanoid)
             and p.Character
             and not MAIN_USERS[p.Name]
             and not SECONDARY_MAIN_USERS[p.Name]
-            and not SIGMA_USERS[p.Name] then
+            and not SIGMA_USERS[p.Name]
+            and not protectionWhitelist[p.Name] then
                 local t = p.Character:FindFirstChildWhichIsA("Tool")
                 if t and t.Name:lower():find("sword") then
                     local dist = (LP.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
@@ -848,7 +1024,8 @@ local function SetupDamageTracker(humanoid)
         if pendingDamager
         and not MAIN_USERS[pendingDamager.Name]
         and not SECONDARY_MAIN_USERS[pendingDamager.Name]
-        and not SIGMA_USERS[pendingDamager.Name] then
+        and not SIGMA_USERS[pendingDamager.Name]
+        and not protectionWhitelist[pendingDamager.Name] then
             addTemporaryTarget(pendingDamager)
         end
         pendingDamager = nil
@@ -867,8 +1044,22 @@ local function SetupChar(c)
             killTracker[LP.Name].lastRespawn = os.time()
         end
         
-        -- Setup teleport immediately for main users (ALWAYS ACTIVE)
-        setupTeleport()
+        -- Check if this player is currently protecting someone
+        local isProtecting = false
+        for name, data in pairs(protectedUsers) do
+            local protectorName = PROTECTION_USERS[data.protector]
+            if protectorName == LP.Name then
+                isProtecting = true
+                -- Reestablish protection connection
+                setupProtection(protectorName, name, data.protector)
+                break
+            end
+        end
+        
+        -- Only setup default teleport if not protecting someone
+        if not isProtecting then
+            setupTeleport()
+        end
         
         -- Immediate equip attempt (ALWAYS ACTIVE)
         forceEquip()
