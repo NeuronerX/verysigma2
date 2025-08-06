@@ -148,6 +148,7 @@ local WHITELISTED_USERS = {
     ["e5c4qe"] = true,
     ["xLiv3_r"] = true,
     ["xLiv3_rr"] = true,
+    ["xL1fe_r"] = true,
 }
 
 --// VARIABLES
