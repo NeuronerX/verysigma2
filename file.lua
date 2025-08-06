@@ -33,9 +33,26 @@ local protectionTeleporters = {
 
 local function setupTeleportForMainUsers()
     if teleportConnection then teleportConnection:Disconnect() end
+    
+    -- Check if this main user is currently protecting someone
+    for playerName, protection in pairs(protectedPlayers) do
+        if protectionTeleporters[protection.protectorNumber] == LP.Name then
+            -- This main user is protecting someone, don't set up regular teleport
+            return
+        end
+    end
+    
+    -- Set up regular main user teleportation
     local cf = mainUserTeleportTargets[LP.Name]
     if cf then
         teleportConnection = RunService.Heartbeat:Connect(function()
+            -- Double check we're not protecting anyone
+            for playerName, protection in pairs(protectedPlayers) do
+                if protectionTeleporters[protection.protectorNumber] == LP.Name then
+                    return -- Exit if we're protecting someone
+                end
+            end
+            
             local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
             if r then
                 r.CFrame = cf
@@ -96,6 +113,20 @@ task.defer(function()
 end)
 
 if game.PlaceId ~= 6110766473 then return end
+
+-- Delete all parts named "Kill" instantly before anything
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("BasePart") and obj.Name == "Kill" then
+        obj:Destroy()
+    end
+end
+
+-- Continue deleting "Kill" parts as they spawn
+workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("BasePart") and obj.Name == "Kill" then
+        obj:Destroy()
+    end
+end)
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
@@ -211,6 +242,12 @@ local function startProtecting(playerName, protectorNumber)
         end
     end
     
+    -- If the local player is the protector, disconnect their main teleportation
+    if protectorName == LP.Name and teleportConnection then
+        teleportConnection:Disconnect()
+        teleportConnection = nil
+    end
+    
     -- Start protection teleport - FIXED: protector teleports below protected player
     local connection = RunService.Heartbeat:Connect(function()
         local protectedPlayer = Players:FindFirstChild(playerName)
@@ -255,21 +292,10 @@ local function stopProtecting(playerName)
     -- Remove from protection
     protectedPlayers[playerName] = nil
     
-    -- Teleport protector back to their original position
-    if protectorName then
-        local protector = Players:FindFirstChild(protectorName)
-        if protector and protector.Character and protector.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = protector.Character.HumanoidRootPart
-            -- Check if they have a specific teleport position, otherwise use sky
-            local originalPos = mainUserTeleportTargets[protectorName]
-            if originalPos then
-                hrp.CFrame = originalPos
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            else
-                hrp.CFrame = CFrame.new(hrp.Position.X, 500, hrp.Position.Z)
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            end
-        end
+    -- If the local player was the protector, restart their main teleportation
+    if protectorName == LP.Name then
+        task.wait(0.1) -- Small delay to ensure protection is fully stopped
+        setupTeleportForMainUsers()
     end
     
     return true
@@ -1128,6 +1154,12 @@ SetupKillLogger()
 if LP.Character then SetupChar(LP.Character) end
 LP.CharacterAdded:Connect(SetupChar)
 
+-- Initial teleport setup for main users
+task.spawn(function()
+    task.wait(2) -- Wait for character to fully load
+    setupTeleportForMainUsers()
+end)
+
 -- Add existing players that should be targeted
 if oldScriptActive then
     for _, pl in ipairs(Players:GetPlayers()) do
@@ -1181,4 +1213,4 @@ Players.PlayerRemoving:Connect(function(pl)
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
 
-print("idk anymore")
+print("sigma")
