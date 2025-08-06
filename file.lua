@@ -11,7 +11,7 @@ local teleportTargets = {
 }
 
 --// AUTO ACTIVATE SETTING (REMOVED DUPLICATE)
-local autoactivate = true -- Set to false to disable auto-activation
+local autoactivate = false -- Set to false to disable auto-activation
 
 --// SERVER HOP SETTINGS
 local serverHopEnabled = true -- Set to false to disable server hopping
@@ -141,7 +141,7 @@ local ALWAYS_KILL = {
     ["error232933"]          = true,
     ["FlexFightSecurity015"] = true,
     ["Barbiejetop"]          = true,
-    ["ZabijimRandomLidi"]    = true,
+    ["ZabijimRandomLidi22"]    = false,
 }
 -- NEW WHITELIST TABLE
 local WHITELISTED_USERS = {
