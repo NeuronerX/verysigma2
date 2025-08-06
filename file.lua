@@ -10,8 +10,21 @@ local teleportTargets = {
     [LP.Name] = CFrame.new(0, 10, 0)
 }
 
---// AUTO ACTIVATE SETTING (REMOVED DUPLICATE)
-local autoactivate = false -- Set to false to disable auto-activation
+--// AUTO ACTIVATE SETTING (MANUAL)
+local autoactivate = false -- Set to true to always auto-activate on spawn
+
+--// TIMER AUTO ACTIVATE SETTINGS (TIME-BASED)
+local timerAutoActivate = true -- Set to false to disable timer-based auto-activation
+local autoActivateStartHour = 0 -- Start hour (0 = midnight, in CEST)
+local autoActivateEndHour = 8 -- End hour (8 = 8 AM, in CEST)
+local timezoneOffset = 2 -- CEST is UTC+2, change to 1 for CET (winter time)
+--[[
+    Timer Configuration Examples:
+    - Midnight to 8 AM: startHour = 0, endHour = 8
+    - 10 PM to 6 AM: startHour = 22, endHour = 6
+    - 2 PM to 10 PM: startHour = 14, endHour = 22
+    - Disable timer: timerAutoActivate = false
+]]
 
 --// SERVER HOP SETTINGS
 local serverHopEnabled = true -- Set to false to disable server hopping
@@ -21,6 +34,33 @@ local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum pl
 --// ACTIVATION STATE
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
+
+--------------------------------------------------------------------------------
+-- TIMER AUTO ACTIVATE FUNCTIONS
+--------------------------------------------------------------------------------
+local function getCurrentCESTHour()
+    -- Get current UTC time
+    local utcTime = os.time(os.date("!*t"))
+    -- Add timezone offset to get CEST time
+    local cestTime = utcTime + (timezoneOffset * 3600)
+    local cestDate = os.date("*t", cestTime)
+    return cestDate.hour
+end
+
+local function isWithinAutoActivateTime()
+    if not timerAutoActivate then return false end
+    
+    local currentHour = getCurrentCESTHour()
+    
+    -- Handle cases where time range crosses midnight
+    if autoActivateStartHour <= autoActivateEndHour then
+        -- Normal range (e.g., 0 to 8)
+        return currentHour >= autoActivateStartHour and currentHour < autoActivateEndHour
+    else
+        -- Range crosses midnight (e.g., 22 to 6)
+        return currentHour >= autoActivateStartHour or currentHour < autoActivateEndHour
+    end
+end
 
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
@@ -146,9 +186,6 @@ local ALWAYS_KILL = {
 -- NEW WHITELIST TABLE
 local WHITELISTED_USERS = {
     ["e5c4qe"] = true,
-    ["xLiv3_r"] = true,
-    ["xLiv3_rr"] = true,
-    ["xL1fe_r"] = true,
 }
 
 --// VARIABLES
@@ -204,6 +241,19 @@ end
 
 -- Alias for chat handler compatibility
 local executeActivate = execute
+
+-- Check timer auto-activate periodically
+task.spawn(function()
+    while true do
+        task.wait(60) -- Check every minute
+        
+        if timerAutoActivate and not isActivated and isWithinAutoActivateTime() then
+            -- Only activate if we're within the time range and not already activated
+            print("[Timer Auto-Activate] Activating at CEST hour:", getCurrentCESTHour())
+            execute()
+        end
+    end
+end)
 
 --------------------------------------------------------------------------------
 -- FPS BOOSTER
@@ -897,6 +947,15 @@ local function SetupChar(c)
             end)
         end
         
+        -- Timer auto-activate check after character loads
+        if timerAutoActivate and not isActivated and isWithinAutoActivateTime() then
+            task.spawn(function()
+                task.wait(1) -- Wait 1 second after character loads
+                print("[Timer Auto-Activate] Character spawn activation at CEST hour:", getCurrentCESTHour())
+                execute()
+            end)
+        end
+        
         -- Check if sword is equipped after 5 seconds
         task.spawn(function()
             task.wait(5)
@@ -981,3 +1040,15 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
+
+--------------------------------------------------------------------------------
+-- INITIAL TIMER CHECK
+--------------------------------------------------------------------------------
+-- Check if we should auto-activate based on timer when script starts
+if timerAutoActivate and not isActivated and isWithinAutoActivateTime() then
+    task.spawn(function()
+        task.wait(2) -- Small delay to ensure everything is loaded
+        print("[Timer Auto-Activate] Initial activation at CEST hour:", getCurrentCESTHour())
+        execute()
+    end)
+end
