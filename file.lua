@@ -1156,3 +1156,5 @@ Players.PlayerRemoving:Connect(function(pl)
     
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
+
+print("loaded ver 1")
