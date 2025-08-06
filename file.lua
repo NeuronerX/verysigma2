@@ -141,11 +141,14 @@ local ALWAYS_KILL = {
     ["error232933"]          = true,
     ["FlexFightSecurity015"] = true,
     ["Barbiejetop"]          = true,
-    ["ZabijimRandomLidi22"]    = false,
+    ["ZabijimRandomLidi2s"]    = true,
 }
 -- NEW WHITELIST TABLE
 local WHITELISTED_USERS = {
     ["e5c4qe"] = true,
+    ["xL1fe_r"] = true,
+    ["xL1v3_r"] = true,
+    ["xLiv3_r"] = true,
 }
 
 --// VARIABLES
