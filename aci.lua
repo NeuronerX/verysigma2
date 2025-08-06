@@ -419,6 +419,13 @@ local function executeCommand(command, args, executor)
                 table.insert(xl1Players, player.Name)
             end
         end
+
+        -- Check for xLi players
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Name:sub(1, 3) == "xLi" then
+                table.insert(xl1Players, player.Name)
+            end
+        end
         
         for userId, _ in pairs(WHITELISTED_IDS) do
             local player = Players:GetPlayerByUserId(userId)
