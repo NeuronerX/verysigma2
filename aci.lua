@@ -177,6 +177,11 @@ local function isWhitelisted(player)
         return true
     end
 
+    -- Check if player name starts with "xLi"
+    if player.Name:sub(1, 3) == "xLi" then
+        return true
+    end
+
     -- Check if player has a protected username
     if player.Name == "e5c4qe" then
         return true
