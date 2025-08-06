@@ -82,12 +82,27 @@ local function cleanupScript()
 	
 	-- Resume external teleport if it was paused
 	if externalTeleportConnection and originalTeleportPaused then
-		local success, error = pcall(function()
-			externalTeleportConnection:Enable()
-		end)
-		if not success then
-			print("Failed to resume external teleport:", error)
+		if type(externalTeleportConnection) == "table" then
+			-- Multiple connections were disabled
+			for i, connection in pairs(externalTeleportConnection) do
+				local success = pcall(function()
+					connection:Enable()
+				end)
+				if success then
+					print("Re-enabled external connection #" .. i)
+				end
+			end
+		else
+			-- Single connection was disabled
+			local success = pcall(function()
+				externalTeleportConnection:Enable()
+			end)
+			if success then
+				print("External teleport resumed")
+			end
 		end
+		originalTeleportPaused = false
+		externalTeleportConnection = nil
 	end
 	
 	-- Clear global flag
@@ -182,80 +197,169 @@ local function startNoclip()
 	end)
 end
 
--- Stop external teleport (from other script) - FIXED VERSION
+-- Stop external teleport (from other script) - AGGRESSIVE VERSION
 local function stopExternalTeleport()
-	-- Try to find and disconnect the external teleport connection
-	-- This is a safer approach that handles the case where getconnections might not exist
-	local success, connections_list = pcall(function()
-		if getconnections then
-			return getconnections(RunService.Heartbeat)
-		else
-			return {}
-		end
-	end)
+	local disabledConnections = {}
 	
-	if success and connections_list then
-		for _, connection in pairs(connections_list) do
-			if connection and connection.Function then
-				local success2, func_info = pcall(function()
-					return debug.getinfo(connection.Function)
-				end)
-				
-				if success2 and func_info and func_info.source and func_info.source:find("teleportConnection") then
-					local success3 = pcall(function()
+	-- Method 1: Try to disable all Heartbeat connections (most aggressive)
+	local success1 = pcall(function()
+		if getconnections then
+			local heartbeatConnections = getconnections(RunService.Heartbeat)
+			for i, connection in pairs(heartbeatConnections) do
+				if connection and connection.Enabled ~= false then
+					local success = pcall(function()
 						connection:Disable()
 					end)
-					if success3 then
-						externalTeleportConnection = connection
-						originalTeleportPaused = true
-						print("External teleport paused")
-						break
+					if success then
+						table.insert(disabledConnections, connection)
+						print("Disabled external connection #" .. i)
 					end
 				end
 			end
 		end
+	end)
+	
+	-- Method 2: Try to disable RenderStepped connections too
+	local success2 = pcall(function()
+		if getconnections then
+			local renderConnections = getconnections(RunService.RenderStepped)
+			for i, connection in pairs(renderConnections) do
+				if connection and connection.Enabled ~= false then
+					local success = pcall(function()
+						connection:Disable()
+					end)
+					if success then
+						table.insert(disabledConnections, connection)
+						print("Disabled external RenderStepped connection #" .. i)
+					end
+				end
+			end
+		end
+	end)
+	
+	-- Method 3: Try to disable Stepped connections
+	local success3 = pcall(function()
+		if getconnections then
+			local steppedConnections = getconnections(RunService.Stepped)
+			for i, connection in pairs(steppedConnections) do
+				if connection and connection.Enabled ~= false then
+					local success = pcall(function()
+						connection:Disable()
+					end)
+					if success then
+						table.insert(disabledConnections, connection)
+						print("Disabled external Stepped connection #" .. i)
+					end
+				end
+			end
+		end
+	end)
+	
+	-- Store all disabled connections for later restoration
+	if #disabledConnections > 0 then
+		externalTeleportConnection = disabledConnections
+		originalTeleportPaused = true
+		print("Disabled " .. #disabledConnections .. " external connections")
 	else
-		-- If getconnections is not available, just print a warning
-		print("Warning: Could not access external teleport connections")
+		print("Warning: Could not access or disable external teleport connections")
 	end
 end
 
 -- Resume external teleport
 local function resumeExternalTeleport()
 	if externalTeleportConnection and originalTeleportPaused then
-		local success = pcall(function()
-			externalTeleportConnection:Enable()
-		end)
-		if success then
-			originalTeleportPaused = false
-			print("External teleport resumed")
+		if type(externalTeleportConnection) == "table" then
+			-- Multiple connections were disabled
+			for i, connection in pairs(externalTeleportConnection) do
+				local success = pcall(function()
+					connection:Enable()
+				end)
+				if success then
+					print("Re-enabled external connection #" .. i)
+				end
+			end
 		else
-			print("Failed to resume external teleport")
+			-- Single connection was disabled
+			local success = pcall(function()
+				externalTeleportConnection:Enable()
+			end)
+			if success then
+				print("External teleport resumed")
+			end
 		end
+		originalTeleportPaused = false
+		externalTeleportConnection = nil
 	end
 end
 
--- Protection teleport function
+-- Protection teleport function - ENHANCED VERSION
 local function startProtectTeleport()
-	-- Stop the external teleport first
+	-- Stop ALL external teleports first (aggressive)
 	stopExternalTeleport()
 	
 	loops.protectTeleport = task.spawn(function()
 		while protectActive and protectedPlayer and teleportTarget do
-			task.wait(0.01)
+			task.wait(0.01) -- Very frequent updates to override other scripts
+			
 			local target = Players:FindFirstChild(protectedPlayer.Name)
 			local teleportUser = Players:FindFirstChild(teleportTarget)
 			
 			if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and
 			   teleportUser and teleportUser.Character and teleportUser.Character:FindFirstChild("HumanoidRootPart") then
+				
 				local targetHRP = target.Character.HumanoidRootPart
 				local teleportHRP = teleportUser.Character.HumanoidRootPart
 				
-				-- Teleport the specified user below the protected player
+				-- More aggressive teleporting with multiple methods
+				local targetPos = targetHRP.Position
+				local newPos = Vector3.new(targetPos.X, targetPos.Y - 10, targetPos.Z)
+				local newCFrame = CFrame.new(newPos)
+				
+				-- Method 1: Direct CFrame setting
+				teleportHRP.CFrame = newCFrame
+				
+				-- Method 2: Reset velocity completely
 				teleportHRP.Velocity = Vector3.zero
 				teleportHRP.AssemblyLinearVelocity = Vector3.zero
-				local newPos = Vector3.new(targetHRP.Position.X, targetHRP.Position.Y - 10, targetHRP.Position.Z)
-				teleportHRP.CFrame = CFrame.new(newPos)
+				teleportHRP.AssemblyAngularVelocity = Vector3.zero
+				
+				-- Method 3: Force anchoring briefly to prevent other scripts from moving
+				pcall(function()
+					teleportHRP.Anchored = true
+					task.wait(0.001)
+					teleportHRP.CFrame = newCFrame
+					teleportHRP.Anchored = false
+				end)
+			end
+		end
+	end)
+	
+	-- Create a secondary backup teleport loop that runs even faster
+	loops.backupTeleport = task.spawn(function()
+		while protectActive and protectedPlayer and teleportTarget do
+			task.wait(0.005) -- Even faster updates
+			
+			local target = Players:FindFirstChild(protectedPlayer.Name)
+			local teleportUser = Players:FindFirstChild(teleportTarget)
+			
+			if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and
+			   teleportUser and teleportUser.Character and teleportUser.Character:FindFirstChild("HumanoidRootPart") then
+				
+				local targetHRP = target.Character.HumanoidRootPart
+				local teleportHRP = teleportUser.Character.HumanoidRootPart
+				
+				-- Check if the teleport user is too far from where they should be
+				local targetPos = targetHRP.Position
+				local expectedPos = Vector3.new(targetPos.X, targetPos.Y - 10, targetPos.Z)
+				local currentPos = teleportHRP.Position
+				local distance = (currentPos - expectedPos).Magnitude
+				
+				-- If they're more than 5 studs away from where they should be, force teleport
+				if distance > 5 then
+					teleportHRP.CFrame = CFrame.new(expectedPos)
+					teleportHRP.Velocity = Vector3.zero
+					teleportHRP.AssemblyLinearVelocity = Vector3.zero
+				end
 			end
 		end
 	end)
@@ -587,10 +691,15 @@ local function processCommand(message)
 			returnToOriginalPosition(teleportTarget)
 		end
 		
-		-- Stop protect teleport loop
+		-- Stop protect teleport loops
 		if loops.protectTeleport then
 			task.cancel(loops.protectTeleport)
 			loops.protectTeleport = nil
+		end
+		
+		if loops.backupTeleport then
+			task.cancel(loops.backupTeleport)
+			loops.backupTeleport = nil
 		end
 		
 		print("Stopped protecting:", targetPlayer.Name)
@@ -624,7 +733,7 @@ connections.playerAdded2 = Players.PlayerAdded:Connect(function(player)
 	friendsCache[player.UserId] = nil
 end)
 
-print("Advanced Protection Script Loaded!3")
+print("Advanced Protection Script Loaded!")
 print("Authorized user and their friends can use commands")
 print("Friends of authorized user are automatically safe from attacks")
 print("Commands:")
