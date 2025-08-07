@@ -1326,4 +1326,4 @@ Players.PlayerRemoving:Connect(function(pl)
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
 
-print("Script loaded with ultra fast autoequip - no delays! Improved .sp/.unsp and .goon/.ungoon commands! Autoequip now stays enabled during goon.")
+print("Script loaded with ultra fast autoequip - no delays! Improved .sp/.unsp and .goon/.ungoon commands! Autsssssssssssoequip now stays enabled during goon.")
