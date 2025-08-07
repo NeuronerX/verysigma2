@@ -57,6 +57,9 @@ local goonConnection = nil -- Track the goon loop connection
 local goonTrack = nil -- Track the animation
 local isGooning = false -- Track goon state
 
+--// AUTOEQUIP STATE
+local autoequipEnabled = true -- Track if autoequip should be enabled
+
 --// FPS BOOST VARIABLES
 -- No longer needed since we're not looping
 
@@ -253,6 +256,14 @@ local function startSpamLoop()
     end)
 end
 
+local function stopSpamLoop()
+    if spamConnection then
+        print("Stopping spam loop...")
+        spamConnection:Disconnect()
+        spamConnection = nil
+    end
+end
+
 --// GOON LOOP FUNCTIONS
 local function isR15(player)
     local character = player.Character
@@ -267,6 +278,7 @@ local function startGoonLoop()
     
     print("Starting goon loop...")
     isGooning = true
+    autoequipEnabled = false -- Disable autoequip when gooning
     
     task.spawn(function()
         while isGooning do
@@ -315,6 +327,7 @@ local function stopGoonLoop()
     
     print("Stopping goon loop...")
     isGooning = false
+    autoequipEnabled = true -- Re-enable autoequip when ungoon
     
     if goonTrack then
         pcall(function()
@@ -881,6 +894,9 @@ end)
 -- AUTOEQUIP & BOXREACH
 --------------------------------------------------------------------------------
 local function forceEquip()
+    -- Only equip if autoequip is enabled (not gooning)
+    if not autoequipEnabled then return end
+    
     local char = LP.Character
     if not char then return end
     local humanoid = char:FindFirstChildWhichIsA("Humanoid")
@@ -891,7 +907,7 @@ local function forceEquip()
     end
 end
 
--- Constant sword equipping (ALWAYS ACTIVE)
+-- Constant sword equipping (CONTROLLED BY autoequipEnabled)
 RunService.RenderStepped:Connect(forceEquip)
 
 local function CreateBoxReach(tool)
@@ -1096,7 +1112,7 @@ local function SetupChar(c)
         -- Setup teleport immediately for main users (ALWAYS ACTIVE)
         setupTeleport()
         
-        -- Immediate equip attempt (ALWAYS ACTIVE)
+        -- Immediate equip attempt (CONTROLLED BY autoequipEnabled)
         forceEquip()
         
         -- Auto-activate after character loads (if enabled)
@@ -1208,4 +1224,4 @@ LP.CharacterAdded:Connect(function()
     -- Don't auto-stop spam loop on respawn - let user control it manually
 end)
 
-print("Script loaded with .sp/.unsp and .goon/.ungoon commands added!")
+print("Script loaded with .sp/.unsp and .goon/.ungoon commands addeds!")
