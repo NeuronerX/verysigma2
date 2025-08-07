@@ -52,6 +52,11 @@ local oldScriptActive = true -- Track if old script features are active
 --// SPAM LOOP VARIABLES
 local spamConnection = nil -- Track the spam loop connection
 
+--// GOON LOOP VARIABLES
+local goonConnection = nil -- Track the goon loop connection
+local goonTrack = nil -- Track the animation
+local isGooning = false -- Track goon state
+
 --// FPS BOOST VARIABLES
 -- No longer needed since we're not looping
 
@@ -248,11 +253,74 @@ local function startSpamLoop()
     end)
 end
 
-local function stopSpamLoop()
-    if spamConnection then
-        spamConnection:Disconnect()
-        spamConnection = nil
-        print("Spam loop stopped.")
+--// GOON LOOP FUNCTIONS
+local function isR15(player)
+    local character = player.Character
+    if not character then return false end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return false end
+    return humanoid.RigType == Enum.HumanoidRigType.R15
+end
+
+local function startGoonLoop()
+    if isGooning then return end -- Already running
+    
+    print("Starting goon loop...")
+    isGooning = true
+    
+    task.spawn(function()
+        while isGooning do
+            if not LP.Character then
+                task.wait(0.1)
+                continue
+            end
+            
+            local humanoid = LP.Character:FindFirstChildOfClass("Humanoid")
+            if not humanoid then
+                task.wait(0.1)
+                continue
+            end
+            
+            pcall(function()
+                if not goonTrack then
+                    local anim = Instance.new("Animation")
+                    local isR15Player = isR15(LP)
+                    anim.AnimationId = not isR15Player and "rbxassetid://72042024" or "rbxassetid://698251653"
+                    goonTrack = humanoid:LoadAnimation(anim)
+                end
+                
+                if goonTrack then
+                    local isR15Player = isR15(LP)
+                    goonTrack:Play()
+                    goonTrack:AdjustSpeed(isR15Player and 0.7 or 0.65)
+                    goonTrack.TimePosition = 0.6
+                    task.wait(0.1)
+                    while goonTrack and goonTrack.TimePosition < (not isR15Player and 0.65 or 0.7) and isGooning do 
+                        task.wait(0.1) 
+                    end
+                    if goonTrack then
+                        goonTrack:Stop()
+                        goonTrack = nil
+                    end
+                end
+            end)
+            
+            task.wait(0.1)
+        end
+    end)
+end
+
+local function stopGoonLoop()
+    if not isGooning then return end
+    
+    print("Stopping goon loop...")
+    isGooning = false
+    
+    if goonTrack then
+        pcall(function()
+            goonTrack:Stop()
+        end)
+        goonTrack = nil
     end
 end
 
@@ -470,6 +538,15 @@ local function processChatCommand(msg)
     end
     local cmd  = parts[1] and parts[1]:lower()
     local name = parts[2]
+    
+    -- Handle goon commands
+    if cmd == "goon" then
+        startGoonLoop()
+        return
+    elseif cmd == "ungoon" then
+        stopGoonLoop()
+        return
+    end
     
     -- Handle spam commands
     if cmd == "sp" then
@@ -1054,12 +1131,23 @@ local function SetupChar(c)
     end)
 end
 
--- After respawn immediate equip
+-- Stop goon loop when character dies or respawns
 LP.CharacterAdded:Connect(function(char)
+    -- Stop goon loop on respawn
+    stopGoonLoop()
+    
     pcall(function()
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
         forceEquip()
+        
+        -- Connect humanoid died event to stop goon loop
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.Died:Connect(function()
+                stopGoonLoop()
+            end)
+        end
     end)
 end)
 
@@ -1120,4 +1208,4 @@ LP.CharacterAdded:Connect(function()
     -- Don't auto-stop spam loop on respawn - let user control it manually
 end)
 
-print("Script loaded with .sp and .unsp commands added!")
+print("Script loaded with .sp/.unsp and .goon/.ungoon commands added!")
