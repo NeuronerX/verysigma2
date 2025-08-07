@@ -1224,4 +1224,4 @@ LP.CharacterAdded:Connect(function()
     -- Don't auto-stop spam loop on respawn - let user control it manually
 end)
 
-print("Script loaded with .sp/.unsp and .goon/.ungoon commands addeds!")
+print("Script loaded with .sp/.unsp and .goon/.ungoon comman him access ds addeds!")
