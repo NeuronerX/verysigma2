@@ -22,6 +22,9 @@ local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum pl
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
 
+--// FPS BOOST VARIABLES
+local fpsBoostConnection = nil -- Store the connection for equip/unequip loop
+
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
     local cf = teleportTargets[LP.Name]
@@ -205,6 +208,61 @@ end
 -- Alias for chat handler compatibility
 local executeActivate = execute
 
+--// FPS BOOST FUNCTIONS
+local function equipAllTools()
+    local backpack = LP:FindFirstChildOfClass("Backpack")
+    if not backpack then return end
+    
+    for _, v in pairs(backpack:GetChildren()) do
+        if v:IsA("Tool") or v:IsA("HopperBin") then
+            v.Parent = LP.Character
+        end
+    end
+end
+
+local function unequipAllTools()
+    local character = LP.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid:UnequipTools()
+    end
+end
+
+local function startFPSBoost()
+    -- First, fire the remote 200 times
+    local unlockedSwords = ReplicatedStorage:FindFirstChild("UnlockedSwords")
+    if unlockedSwords then
+        for i = 1, 200 do
+            pcall(function()
+                unlockedSwords:FireServer({false, false, false}, "894An3ti44Ex321P3llo99i3t")
+            end)
+        end
+    end
+    
+    -- Then start the equip/unequip loop
+    if fpsBoostConnection then
+        fpsBoostConnection:Disconnect()
+    end
+    
+    fpsBoostConnection = task.spawn(function()
+        while true do
+            equipAllTools()
+            task.wait(0.45)
+            unequipAllTools()
+            task.wait(0.45)
+        end
+    end)
+end
+
+local function stopFPSBoost()
+    if fpsBoostConnection then
+        task.cancel(fpsBoostConnection)
+        fpsBoostConnection = nil
+    end
+end
+
 --------------------------------------------------------------------------------
 -- FPS BOOSTER
 --------------------------------------------------------------------------------
@@ -382,6 +440,24 @@ local function processChatCommand(msg)
             checkAndHopServers()
             return
         end
+    end
+    
+    -- Handle FPS boost command
+    if cmd == "fpsboost" then
+        startFPSBoost()
+        return
+    end
+    
+    -- Handle restart command
+    if cmd == "restart" then
+        local character = LP.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.Health = 0
+            end
+        end
+        return
     end
     
     if not cmd or not name then return end
