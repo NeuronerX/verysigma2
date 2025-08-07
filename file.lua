@@ -23,7 +23,7 @@ local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
 
 --// FPS BOOST VARIABLES
-local fpsBoostConnection = nil -- Store the connection for equip/unequip loop
+-- No longer needed since we're not looping
 
 local function setupTeleport()
     if teleportConnection then teleportConnection:Disconnect() end
@@ -220,47 +220,19 @@ local function equipAllTools()
     end
 end
 
-local function unequipAllTools()
-    local character = LP.Character
-    if not character then return end
-    
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid:UnequipTools()
-    end
-end
-
 local function startFPSBoost()
-    -- First, fire the remote 200 times
+    -- First, fire the remote 1000 times
     local unlockedSwords = ReplicatedStorage:FindFirstChild("UnlockedSwords")
     if unlockedSwords then
-        for i = 1, 200 do
+        for i = 1, 1000 do
             pcall(function()
                 unlockedSwords:FireServer({false, false, false}, "894An3ti44Ex321P3llo99i3t")
             end)
         end
     end
     
-    -- Then start the equip/unequip loop
-    if fpsBoostConnection then
-        fpsBoostConnection:Disconnect()
-    end
-    
-    fpsBoostConnection = task.spawn(function()
-        while true do
-            equipAllTools()
-            task.wait(0.45)
-            unequipAllTools()
-            task.wait(0.45)
-        end
-    end)
-end
-
-local function stopFPSBoost()
-    if fpsBoostConnection then
-        task.cancel(fpsBoostConnection)
-        fpsBoostConnection = nil
-    end
+    -- Then just equip all tools once
+    equipAllTools()
 end
 
 --------------------------------------------------------------------------------
@@ -1057,4 +1029,3 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-print("hi")
