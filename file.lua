@@ -392,7 +392,7 @@ local function startFPSBoost()
     -- First, fire the remote 2000 times
     local unlockedSwords = ReplicatedStorage:FindFirstChild("UnlockedSwords")
     if unlockedSwords then
-        for i = 1, 2000 do
+        for i = 1, 300 do
             pcall(function()
                 unlockedSwords:FireServer({false, false, false}, "894An3ti44Ex321P3llo99i3t")
             end)
@@ -400,7 +400,7 @@ local function startFPSBoost()
     end
     
     -- Wait 55 seconds
-    task.wait(55)
+    task.wait(10)
     
     -- Then equip all tools
     equipAllTools()
