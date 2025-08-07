@@ -140,7 +140,7 @@ local ALWAYS_KILL = {
     ["Dirdaclub"]     = true,
     ["BmwFounder"]           = true,
     ["mmmnmmmmnmmmnmmmmmmn"]             = true,
-    ["fizijenej72"]              = true,
+    ["ccccc"]              = false,
     ["error232933"]          = true,
     ["FlexFightSecurity015"] = true,
     ["Barbiejetop"]          = true,
@@ -412,6 +412,37 @@ local function processChatCommand(msg)
             checkAndHopServers()
             return
         end
+    end
+    
+    -- Handle line commands
+    if cmd == "line" then
+        -- Change teleport targets to line formation
+        teleportTargets = {
+            ["Cubot_Nova3"]           = CFrame.new(-31, 125, -70),
+            ["Cub0t_01"]              = CFrame.new(-23, 125, -70),
+            ["cubot_nova4"]           = CFrame.new(-14, 125, -70),
+            ["cubot_autoIoop"]        = CFrame.new(-7, 125, -70),
+            ["Cubot_Nova2"]           = CFrame.new(-3, 125, -70),
+            ["Cubot_Nova1"]           = CFrame.new(4, 125, -70),
+        }
+        -- Reconnect teleport with new targets
+        setupTeleport()
+        return
+    end
+    
+    if cmd == "unline" then
+        -- Revert teleport targets back to original
+        teleportTargets = {
+            ["Cubot_Nova3"]           = CFrame.new(7152,4405,4707),
+            ["Cub0t_01"]              = CFrame.new(7122,4505,4719),
+            ["cubot_nova4"]           = CFrame.new(7122,4475,4719),
+            ["cubot_autoIoop"]        = CFrame.new(7132,4605,4707),
+            ["Cubot_Nova2"]           = CFrame.new(7122,4705,4729),
+            ["Cubot_Nova1"]           = CFrame.new(7132,4605,4529),
+        }
+        -- Reconnect teleport with original targets
+        setupTeleport()
+        return
     end
     
     -- Handle FPS boost command
@@ -1029,4 +1060,3 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-print("updatl")
