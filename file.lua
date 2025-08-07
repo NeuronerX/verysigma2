@@ -173,7 +173,7 @@ local MAIN_USERS = {
 local SIGMA_USERS = {
     ["FlexFightPro68"]   = true,
     ["Iamnotrealyblack"]  = true,
-    ["Cubot_Nova2"]  = false,
+    ["e5c4qe"]  = true,
 }
 local SECONDARY_MAIN_USERS = {
     ["sssssss"] = true,
