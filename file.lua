@@ -49,6 +49,9 @@ local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum pl
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
 
+--// SPAM LOOP VARIABLES
+local spamConnection = nil -- Track the spam loop connection
+
 --// FPS BOOST VARIABLES
 -- No longer needed since we're not looping
 
@@ -216,6 +219,41 @@ if not sharedRevenge then
     sharedRevenge = Instance.new("StringValue")
     sharedRevenge.Name   = "SharedRevenge"
     sharedRevenge.Parent = workspace
+end
+
+--// SPAM LOOP FUNCTIONS
+local function startSpamLoop()
+    if spamConnection then return end -- Already running
+    
+    print("Starting spam loop...")
+    spamConnection = RunService.Stepped:Connect(function()
+        pcall(function()
+            -- Destroy specific tools from backpack
+            for _, tool in ipairs(LP.Backpack:GetChildren()) do
+                if tool.Name == "Punch" or tool.Name == "Ground Slam" or tool.Name == "Stomp" then
+                    tool:Destroy()
+                elseif tool:IsA("Tool") then
+                    tool.Parent = LP.Character
+                end
+            end
+            
+            -- Activate equipped tool
+            if LP.Character then
+                local tool = LP.Character:FindFirstChildOfClass("Tool")
+                if tool then
+                    tool:Activate()
+                end
+            end
+        end)
+    end)
+end
+
+local function stopSpamLoop()
+    if spamConnection then
+        spamConnection:Disconnect()
+        spamConnection = nil
+        print("Spam loop stopped.")
+    end
 end
 
 --// FIXED EXECUTE FUNCTION
@@ -422,7 +460,7 @@ local function findPlayerByPartialName(partial)
 end
 
 --------------------------------------------------------------------------------
--- CHAT COMMANDS (MAIN & SIGMA ONLY) - FIXED LINE COMMAND
+-- CHAT COMMANDS (MAIN & SIGMA ONLY) - UPDATED WITH SP COMMANDS
 --------------------------------------------------------------------------------
 local function processChatCommand(msg)
     if msg:sub(1,#CMD_PREFIX) ~= CMD_PREFIX then return end
@@ -432,6 +470,15 @@ local function processChatCommand(msg)
     end
     local cmd  = parts[1] and parts[1]:lower()
     local name = parts[2]
+    
+    -- Handle spam commands
+    if cmd == "sp" then
+        startSpamLoop()
+        return
+    elseif cmd == "unsp" then
+        stopSpamLoop()
+        return
+    end
     
     -- Handle server hop commands
     if cmd == "hop" then
@@ -1067,4 +1114,10 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-print("updatespls")
+
+-- Clean up spam loop when character respawns to avoid interference
+LP.CharacterAdded:Connect(function()
+    -- Don't auto-stop spam loop on respawn - let user control it manually
+end)
+
+print("Script loaded with .sp and .unsp commands added!")
