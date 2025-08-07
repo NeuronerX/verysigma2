@@ -27,14 +27,14 @@ local originalTargets = {
     ["Cubot_Nova1"]     = CFrame.new(7132,4605,4529),
 }
 
--- Line formation positions
+-- Line formation positions (facing backward - 180 degrees turned)
 local lineTargets = {
-    ["Cubot_Nova3"]     = CFrame.new(-31, 125, -70),
-    ["Cub0t_01"]        = CFrame.new(-23, 125, -70),
-    ["cubot_nova4"]     = CFrame.new(-14, 125, -70),
-    ["cubot_autoIoop"]  = CFrame.new(-7, 125, -70),
-    ["Cubot_Nova2"]     = CFrame.new(-3, 125, -70),
-    ["Cubot_Nova1"]     = CFrame.new(4, 125, -70),
+    ["Cubot_Nova3"]     = CFrame.new(-31, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cub0t_01"]        = CFrame.new(-23, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_nova4"]     = CFrame.new(-14, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_autoIoop"]  = CFrame.new(-7, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova2"]     = CFrame.new(-3, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova1"]     = CFrame.new(4, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
 }
 
 --// AUTO ACTIVATE SETTING (REMOVED DUPLICATE)
@@ -1067,4 +1067,4 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-print("updatepls")
+print("updatespls")
