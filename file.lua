@@ -210,10 +210,7 @@ local executeActivate = execute
 
 --// FPS BOOST FUNCTIONS
 local function equipAllTools()
-    local backpack = LP:FindFirstChildOfClass("Backpack")
-    if not backpack then return end
-    
-    for _, v in pairs(backpack:GetChildren()) do
+    for i,v in pairs(LP:FindFirstChildOfClass("Backpack"):GetChildren()) do
         if v:IsA("Tool") or v:IsA("HopperBin") then
             v.Parent = LP.Character
         end
@@ -231,7 +228,10 @@ local function startFPSBoost()
         end
     end
     
-    -- Then just equip all tools once
+    -- Wait 20 seconds
+    task.wait(20)
+    
+    -- Then equip all tools
     equipAllTools()
 end
 
@@ -1029,4 +1029,3 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-print("his")
