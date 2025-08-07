@@ -910,22 +910,93 @@ task.spawn(function()
 end)
 
 --------------------------------------------------------------------------------
--- IMPROVED AUTOEQUIP & BOXREACH (ALWAYS ENABLED)
+-- ULTRA FAST AUTOEQUIP & BOXREACH (ALWAYS ENABLED) - NO DELAYS
 --------------------------------------------------------------------------------
-local function forceEquip()
+
+local function fastForceEquip()
     -- Always equip regardless of goon state
     local char = LP.Character
     if not char then return end
+    
     local humanoid = char:FindFirstChildWhichIsA("Humanoid")
     if not humanoid then return end
+    
+    -- Check if we already have a sword equipped
+    local equippedSword = char:FindFirstChild("Sword")
+    if equippedSword then return end
+    
+    -- Try to find and equip sword from backpack immediately
     local sword = LP.Backpack:FindFirstChild("Sword")
-    if sword and not char:FindFirstChild("Sword") then
-        humanoid:EquipTool(sword)
+    if sword then
+        -- Use pcall for safety
+        pcall(function()
+            humanoid:EquipTool(sword)
+        end)
+        return
+    end
+    
+    -- If no sword in backpack, try to equip any available tool immediately
+    for _, tool in ipairs(LP.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
+            pcall(function()
+                humanoid:EquipTool(tool)
+            end)
+            break
+        end
     end
 end
 
--- Constant sword equipping (ALWAYS ACTIVE - NOT AFFECTED BY GOON STATE)
-RunService.RenderStepped:Connect(forceEquip)
+-- Maximum speed autoequip system with all available event loops
+RunService.Heartbeat:Connect(fastForceEquip) -- Primary equip loop
+RunService.Stepped:Connect(fastForceEquip)   -- Secondary equip loop
+RunService.RenderStepped:Connect(fastForceEquip) -- Tertiary equip loop for maximum responsiveness
+
+-- Immediate equip on backpack changes
+LP.ChildAdded:Connect(function(child)
+    if child.Name == "Backpack" then
+        child.ChildAdded:Connect(function(tool)
+            if tool:IsA("Tool") and tool.Name == "Sword" then
+                fastForceEquip() -- Immediate equip attempt with no delay
+            end
+        end)
+    end
+end)
+
+-- Instant equip on character spawn
+LP.CharacterAdded:Connect(function(char)
+    -- Immediate equip attempt
+    fastForceEquip()
+    
+    -- Wait for humanoid and backpack with immediate equip attempts
+    task.spawn(function()
+        local humanoid = char:WaitForChild("Humanoid", 5)
+        local backpack = LP:WaitForChild("Backpack", 5)
+        
+        if humanoid and backpack then
+            -- Continuous immediate equip attempts with no delays
+            for i = 1, 100 do -- Increased attempts
+                fastForceEquip()
+                if char:FindFirstChild("Sword") then break end
+                task.wait() -- Minimal yield, no actual delay
+            end
+        end
+    end)
+end)
+
+-- Monitor for sword being unequipped and re-equip instantly
+local swordRemovedConnection
+LP.CharacterAdded:Connect(function(char)
+    if swordRemovedConnection then
+        swordRemovedConnection:Disconnect()
+    end
+    
+    swordRemovedConnection = char.ChildRemoved:Connect(function(child)
+        if child.Name == "Sword" and child:IsA("Tool") then
+            -- Sword was removed, re-equip instantly with no delay
+            fastForceEquip()
+        end
+    end)
+end)
 
 local function CreateBoxReach(tool)
     if not tool or not tool:IsA("Tool") then return end
@@ -981,7 +1052,7 @@ end
 local function HB()
     if not oldScriptActive then return end -- Don't attack if new script is active
     
-    forceEquip()
+    fastForceEquip() -- Use the faster equip function
     local c = LP.Character if not c then return end
     local tool = c:FindFirstChildWhichIsA("Tool") if not tool then return end
     CreateBoxReach(tool)
@@ -1130,7 +1201,7 @@ local function SetupChar(c)
         setupTeleport()
         
         -- Immediate equip attempt (ALWAYS ACTIVE)
-        forceEquip()
+        fastForceEquip()
         
         -- Auto-activate after character loads (if enabled)
         if autoactivate and not isActivated then
@@ -1140,11 +1211,18 @@ local function SetupChar(c)
             end)
         end
         
-        -- Check if sword is equipped after 5 seconds
+        -- Enhanced sword equipping check with multiple attempts
         task.spawn(function()
-            task.wait(5)
+            for i = 1, 100 do -- Try 100 times with no delays
+                fastForceEquip()
+                if c and c.Parent and c:FindFirstChild("Sword") then 
+                    break -- Successfully equipped
+                end
+                task.wait() -- Minimal yield
+            end
+            
+            -- Final check - if still no sword after attempts, reset
             if c and c.Parent and not c:FindFirstChild("Sword") then
-                -- Reset character if no sword equipped
                 if h and h.Parent then
                     h.Health = 0
                 end
@@ -1173,8 +1251,15 @@ LP.CharacterAdded:Connect(function(char)
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
         
-        -- Always try to equip
-        forceEquip()
+        -- Always try to equip immediately and repeatedly with no delays
+        fastForceEquip()
+        task.spawn(function()
+            for i = 1, 100 do -- Increased attempts with no delays
+                fastForceEquip()
+                if char:FindFirstChild("Sword") then break end
+                task.wait() -- Minimal yield only
+            end
+        end)
         
         -- Connect humanoid died event to stop goon loop
         local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -1241,4 +1326,4 @@ Players.PlayerRemoving:Connect(function(pl)
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
 
-print("Script loaded with improved .sp/.unsp and .goon/.ungoon commands! Autoequip now stays enabled during goon.")
+print("Script loaded with ultra fast autoequip - no delays! Improved .sp/.unsp and .goon/.ungoon commands! Autoequip now stays enabled during goon.")
