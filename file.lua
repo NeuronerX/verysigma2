@@ -173,7 +173,7 @@ local MAIN_USERS = {
 local SIGMA_USERS = {
     ["FlexFightPro68"]   = true,
     ["Iamnotrealyblack"]  = true,
-    ["e5c4qe"]  = true,
+    ["Cubot_Nova2"]  = false,
 }
 local SECONDARY_MAIN_USERS = {
     ["sssssss"] = true,
@@ -1224,4 +1224,4 @@ LP.CharacterAdded:Connect(function()
     -- Don't auto-stop spam loop on respawn - let user control it manually
 end)
 
-print("Script loaded with .sp/.unsp and .goon/.ungoon comman him access ds addeds!")
+print("Script loaded with .sp/.unsp and .goon/.ungoon commands addeds!")
