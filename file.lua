@@ -910,112 +910,22 @@ task.spawn(function()
 end)
 
 --------------------------------------------------------------------------------
--- ULTRA-FAST AUTOEQUIP & BOXREACH (ALWAYS ENABLED) - NO DELAYS
+-- IMPROVED AUTOEQUIP & BOXREACH (ALWAYS ENABLED)
 --------------------------------------------------------------------------------
-local function ultraFastForceEquip()
-    -- Always equip regardless of goon state - NO DELAYS OR THROTTLING
+local function forceEquip()
+    -- Always equip regardless of goon state
     local char = LP.Character
     if not char then return end
-    
     local humanoid = char:FindFirstChildWhichIsA("Humanoid")
     if not humanoid then return end
-    
-    -- Check if we already have a sword equipped
-    local equippedSword = char:FindFirstChild("Sword")
-    if equippedSword then return end
-    
-    -- Try to find and equip sword from backpack IMMEDIATELY
     local sword = LP.Backpack:FindFirstChild("Sword")
-    if sword then
-        -- Use pcall for safety but NO delays
-        pcall(function()
-            humanoid:EquipTool(sword)
-        end)
-        return
-    end
-    
-    -- If no sword in backpack, try to equip any available tool IMMEDIATELY
-    for _, tool in ipairs(LP.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
-            pcall(function()
-                humanoid:EquipTool(tool)
-            end)
-            break
-        end
+    if sword and not char:FindFirstChild("Sword") then
+        humanoid:EquipTool(sword)
     end
 end
 
--- MAXIMUM SPEED - Multiple simultaneous equip loops with NO delays
-RunService.Heartbeat:Connect(ultraFastForceEquip)     -- ~60+ times per second
-RunService.Stepped:Connect(ultraFastForceEquip)       -- Physics step
-RunService.RenderStepped:Connect(ultraFastForceEquip) -- Render step (highest priority)
-
--- INSTANT equip on any backpack changes
-LP.ChildAdded:Connect(function(child)
-    if child.Name == "Backpack" then
-        child.ChildAdded:Connect(function(tool)
-            if tool:IsA("Tool") then
-                -- INSTANT equip attempt - NO delays
-                ultraFastForceEquip()
-                ultraFastForceEquip()
-                ultraFastForceEquip()
-            end
-        end)
-    end
-end)
-
--- INSTANT equip on character spawn - NO waiting
-LP.CharacterAdded:Connect(function(char)
-    -- INSTANT equip attempts - NO waiting for anything
-    task.spawn(function()
-        -- Spam equip attempts immediately
-        for i = 1, 100 do
-            ultraFastForceEquip()
-            if char:FindFirstChild("Sword") then break end
-        end
-    end)
-    
-    -- Secondary immediate equip loop
-    task.spawn(function()
-        while char.Parent do
-            ultraFastForceEquip()
-            if char:FindFirstChild("Sword") then break end
-            task.wait() -- Single frame wait only
-        end
-    end)
-end)
-
--- INSTANT re-equip when sword is removed - NO delays
-local swordRemovedConnection
-LP.CharacterAdded:Connect(function(char)
-    if swordRemovedConnection then
-        swordRemovedConnection:Disconnect()
-    end
-    
-    swordRemovedConnection = char.ChildRemoved:Connect(function(child)
-        if child.Name == "Sword" and child:IsA("Tool") then
-            -- INSTANT re-equip - NO delays
-            ultraFastForceEquip()
-            ultraFastForceEquip()
-            ultraFastForceEquip()
-        end
-    end)
-end)
-
--- Monitor backpack directly for INSTANT response
-LP:GetPropertyChangedSignal("Backpack"):Connect(function()
-    if LP.Backpack then
-        ultraFastForceEquip()
-    end
-end)
-
--- Additional INSTANT equip triggers
-workspace.DescendantAdded:Connect(function(obj)
-    if obj:IsA("Tool") and obj.Parent == LP.Backpack and obj.Name == "Sword" then
-        ultraFastForceEquip()
-        ultraFastForceEquip()
-    end
-end)
+-- Constant sword equipping (ALWAYS ACTIVE - NOT AFFECTED BY GOON STATE)
+RunService.RenderStepped:Connect(forceEquip)
 
 local function CreateBoxReach(tool)
     if not tool or not tool:IsA("Tool") then return end
@@ -1071,7 +981,7 @@ end
 local function HB()
     if not oldScriptActive then return end -- Don't attack if new script is active
     
-    ultraFastForceEquip() -- Use the ultra-fast equip function with NO delays
+    forceEquip()
     local c = LP.Character if not c then return end
     local tool = c:FindFirstChildWhichIsA("Tool") if not tool then return end
     CreateBoxReach(tool)
@@ -1219,10 +1129,8 @@ local function SetupChar(c)
         -- Setup teleport immediately for main users (ALWAYS ACTIVE)
         setupTeleport()
         
-        -- INSTANT equip attempt (ALWAYS ACTIVE) - NO delays
-        ultraFastForceEquip()
-        ultraFastForceEquip()
-        ultraFastForceEquip()
+        -- Immediate equip attempt (ALWAYS ACTIVE)
+        forceEquip()
         
         -- Auto-activate after character loads (if enabled)
         if autoactivate and not isActivated then
@@ -1232,17 +1140,11 @@ local function SetupChar(c)
             end)
         end
         
-        -- ULTRA-FAST sword equipping with NO delays - maximum attempts
+        -- Check if sword is equipped after 5 seconds
         task.spawn(function()
-            for i = 1, 200 do -- 200 instant attempts
-                ultraFastForceEquip()
-                if c and c.Parent and c:FindFirstChild("Sword") then 
-                    break -- Successfully equipped
-                end
-            end
-            
-            -- Final check - if still no sword after all attempts, reset
+            task.wait(5)
             if c and c.Parent and not c:FindFirstChild("Sword") then
+                -- Reset character if no sword equipped
                 if h and h.Parent then
                     h.Health = 0
                 end
@@ -1271,17 +1173,8 @@ LP.CharacterAdded:Connect(function(char)
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
         
-        -- INSTANT equip spam - NO delays whatsoever
-        ultraFastForceEquip()
-        ultraFastForceEquip()
-        ultraFastForceEquip()
-        
-        task.spawn(function()
-            for i = 1, 100 do -- 100 instant attempts
-                ultraFastForceEquip()
-                if char:FindFirstChild("Sword") then break end
-            end
-        end)
+        -- Always try to equip
+        forceEquip()
         
         -- Connect humanoid died event to stop goon loop
         local humanoid = char:FindFirstChildOfClass("Humanoid")
