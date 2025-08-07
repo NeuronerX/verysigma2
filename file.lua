@@ -52,12 +52,14 @@ local oldScriptActive = true -- Track if old script features are active
 --// SPAM LOOP VARIABLES
 local spamConnection = nil -- Track the spam loop connection
 
---// GOON LOOP VARIABLES
+--// IMPROVED GOON LOOP VARIABLES
 local goonConnection = nil -- Track the goon loop connection
-local goonTrack = nil -- Track the animation
+local goonAnimTrack = nil -- Track the animation
 local isGooning = false -- Track goon state
+local goonAnimObject = nil -- Store the animation object
+local lastGoonTime = 0 -- Track timing for better loops
 
---// AUTOEQUIP STATE
+--// AUTOEQUIP STATE (ALWAYS ENABLED - DOESN'T DISABLE ON GOON)
 local autoequipEnabled = true -- Track if autoequip should be enabled
 
 --// FPS BOOST VARIABLES
@@ -264,7 +266,7 @@ local function stopSpamLoop()
     end
 end
 
---// GOON LOOP FUNCTIONS
+--// IMPROVED GOON LOOP FUNCTIONS
 local function isR15(player)
     local character = player.Character
     if not character then return false end
@@ -273,67 +275,84 @@ local function isR15(player)
     return humanoid.RigType == Enum.HumanoidRigType.R15
 end
 
+local function createGoonAnimation()
+    if goonAnimObject then return goonAnimObject end
+    
+    goonAnimObject = Instance.new("Animation")
+    local isR15Player = isR15(LP)
+    goonAnimObject.AnimationId = isR15Player and "rbxassetid://698251653" or "rbxassetid://72042024"
+    return goonAnimObject
+end
+
 local function startGoonLoop()
     if isGooning then return end -- Already running
     
-    print("Starting goon loop...")
+    print("Starting improved goon loop...")
     isGooning = true
-    autoequipEnabled = false -- Disable autoequip when gooning
+    -- DON'T disable autoequip - keep it enabled
+    lastGoonTime = tick()
     
-    task.spawn(function()
-        while isGooning do
-            if not LP.Character then
-                task.wait(0.1)
-                continue
+    goonConnection = RunService.Heartbeat:Connect(function()
+        if not isGooning then return end
+        
+        local character = LP.Character
+        if not character then return end
+        
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+        
+        pcall(function()
+            -- Clean up old animation track if it exists and isn't playing properly
+            if goonAnimTrack then
+                if goonAnimTrack.IsPlaying and goonAnimTrack.TimePosition >= (isR15(LP) and 0.7 or 0.65) then
+                    goonAnimTrack:Stop()
+                    goonAnimTrack = nil
+                elseif not goonAnimTrack.IsPlaying then
+                    goonAnimTrack = nil
+                end
             end
             
-            local humanoid = LP.Character:FindFirstChildOfClass("Humanoid")
-            if not humanoid then
-                task.wait(0.1)
-                continue
+            -- Create new animation track if needed
+            if not goonAnimTrack then
+                local animObject = createGoonAnimation()
+                if animObject then
+                    goonAnimTrack = humanoid:LoadAnimation(animObject)
+                    if goonAnimTrack then
+                        goonAnimTrack.Priority = Enum.AnimationPriority.Action
+                        goonAnimTrack:Play()
+                        goonAnimTrack:AdjustSpeed(isR15(LP) and 0.7 or 0.65)
+                        goonAnimTrack.TimePosition = 0.6
+                        lastGoonTime = tick()
+                    end
+                end
             end
-            
-            pcall(function()
-                if not goonTrack then
-                    local anim = Instance.new("Animation")
-                    local isR15Player = isR15(LP)
-                    anim.AnimationId = not isR15Player and "rbxassetid://72042024" or "rbxassetid://698251653"
-                    goonTrack = humanoid:LoadAnimation(anim)
-                end
-                
-                if goonTrack then
-                    local isR15Player = isR15(LP)
-                    goonTrack:Play()
-                    goonTrack:AdjustSpeed(isR15Player and 0.7 or 0.65)
-                    goonTrack.TimePosition = 0.6
-                    task.wait(0.1)
-                    while goonTrack and goonTrack.TimePosition < (not isR15Player and 0.65 or 0.7) and isGooning do 
-                        task.wait(0.1) 
-                    end
-                    if goonTrack then
-                        goonTrack:Stop()
-                        goonTrack = nil
-                    end
-                end
-            end)
-            
-            task.wait(0.1)
-        end
+        end)
     end)
 end
 
 local function stopGoonLoop()
     if not isGooning then return end
     
-    print("Stopping goon loop...")
+    print("Stopping improved goon loop...")
     isGooning = false
-    autoequipEnabled = true -- Re-enable autoequip when ungoon
+    -- DON'T re-enable autoequip since we never disabled it
     
-    if goonTrack then
+    if goonConnection then
+        goonConnection:Disconnect()
+        goonConnection = nil
+    end
+    
+    if goonAnimTrack then
         pcall(function()
-            goonTrack:Stop()
+            goonAnimTrack:Stop()
         end)
-        goonTrack = nil
+        goonAnimTrack = nil
+    end
+    
+    -- Clean up animation object
+    if goonAnimObject then
+        goonAnimObject:Destroy()
+        goonAnimObject = nil
     end
 end
 
@@ -891,12 +910,10 @@ task.spawn(function()
 end)
 
 --------------------------------------------------------------------------------
--- AUTOEQUIP & BOXREACH
+-- IMPROVED AUTOEQUIP & BOXREACH (ALWAYS ENABLED)
 --------------------------------------------------------------------------------
 local function forceEquip()
-    -- Only equip if autoequip is enabled (not gooning)
-    if not autoequipEnabled then return end
-    
+    -- Always equip regardless of goon state
     local char = LP.Character
     if not char then return end
     local humanoid = char:FindFirstChildWhichIsA("Humanoid")
@@ -907,7 +924,7 @@ local function forceEquip()
     end
 end
 
--- Constant sword equipping (CONTROLLED BY autoequipEnabled)
+-- Constant sword equipping (ALWAYS ACTIVE - NOT AFFECTED BY GOON STATE)
 RunService.RenderStepped:Connect(forceEquip)
 
 local function CreateBoxReach(tool)
@@ -1112,7 +1129,7 @@ local function SetupChar(c)
         -- Setup teleport immediately for main users (ALWAYS ACTIVE)
         setupTeleport()
         
-        -- Immediate equip attempt (CONTROLLED BY autoequipEnabled)
+        -- Immediate equip attempt (ALWAYS ACTIVE)
         forceEquip()
         
         -- Auto-activate after character loads (if enabled)
@@ -1147,14 +1164,16 @@ local function SetupChar(c)
     end)
 end
 
--- Stop goon loop when character dies or respawns
+-- Improved character event handling
 LP.CharacterAdded:Connect(function(char)
-    -- Stop goon loop on respawn
+    -- Stop goon loop on respawn to prevent conflicts
     stopGoonLoop()
     
     pcall(function()
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
+        
+        -- Always try to equip
         forceEquip()
         
         -- Connect humanoid died event to stop goon loop
@@ -1164,6 +1183,9 @@ LP.CharacterAdded:Connect(function(char)
                 stopGoonLoop()
             end)
         end
+        
+        -- Setup character
+        SetupChar(char)
     end)
 end)
 
@@ -1219,9 +1241,4 @@ Players.PlayerRemoving:Connect(function(pl)
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
 
--- Clean up spam loop when character respawns to avoid interference
-LP.CharacterAdded:Connect(function()
-    -- Don't auto-stop spam loop on respawn - let user control it manually
-end)
-
-print("Script loaded with .sp/.unsp and .goon/.ungoon commands addeds!")
+print("Script loaded with improved .sp/.unsp and .goon/.ungoon commands! Autoequip now stays enabled during goon.")
