@@ -1067,4 +1067,4 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-print("updateplss")
+print("updatepls")
