@@ -6,8 +6,35 @@ local RunService = game:GetService("RunService")
 
 local LP = Players.LocalPlayer
 local teleportConnection
+
+-- CENTRALIZED TELEPORT TARGETS (FIXED DUPLICATE ISSUE)
 local teleportTargets = {
-    [LP.Name] = CFrame.new(0, 10, 0)
+    ["Cubot_Nova3"]     = CFrame.new(7152,4405,4707),
+    ["Cub0t_01"]        = CFrame.new(7122,4505,4719),
+    ["cubot_nova4"]     = CFrame.new(7122,4475,4719),
+    ["cubot_autoIoop"]  = CFrame.new(7132,4605,4707),
+    ["Cubot_Nova2"]     = CFrame.new(7122,4705,4729),
+    ["Cubot_Nova1"]     = CFrame.new(7132,4605,4529),
+}
+
+-- Store original positions for unline command
+local originalTargets = {
+    ["Cubot_Nova3"]     = CFrame.new(7152,4405,4707),
+    ["Cub0t_01"]        = CFrame.new(7122,4505,4719),
+    ["cubot_nova4"]     = CFrame.new(7122,4475,4719),
+    ["cubot_autoIoop"]  = CFrame.new(7132,4605,4707),
+    ["Cubot_Nova2"]     = CFrame.new(7122,4705,4729),
+    ["Cubot_Nova1"]     = CFrame.new(7132,4605,4529),
+}
+
+-- Line formation positions
+local lineTargets = {
+    ["Cubot_Nova3"]     = CFrame.new(-31, 125, -70),
+    ["Cub0t_01"]        = CFrame.new(-23, 125, -70),
+    ["cubot_nova4"]     = CFrame.new(-14, 125, -70),
+    ["cubot_autoIoop"]  = CFrame.new(-7, 125, -70),
+    ["Cubot_Nova2"]     = CFrame.new(-3, 125, -70),
+    ["Cubot_Nova1"]     = CFrame.new(4, 125, -70),
 }
 
 --// AUTO ACTIVATE SETTING (REMOVED DUPLICATE)
@@ -26,9 +53,14 @@ local oldScriptActive = true -- Track if old script features are active
 -- No longer needed since we're not looping
 
 local function setupTeleport()
-    if teleportConnection then teleportConnection:Disconnect() end
+    if teleportConnection then 
+        teleportConnection:Disconnect() 
+        teleportConnection = nil
+    end
+    
     local cf = teleportTargets[LP.Name]
     if cf then
+        print("Setting up teleport for", LP.Name, "to position:", cf)
         teleportConnection = RunService.Heartbeat:Connect(function()
             local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
             if r then
@@ -36,6 +68,8 @@ local function setupTeleport()
                 r.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             end
         end)
+    else
+        print("No teleport target found for", LP.Name)
     end
 end
 
@@ -163,7 +197,6 @@ local killTracker              = {}
 local DMG_TIMES                = 2
 local FT_TIMES                 = 5
 local CN                       = nil   -- killloop connection
-local teleportConnection       = nil   -- teleport connection
 local TEMP_TARGET_DURATION     = 99999999999
 local SECONDARY_TARGET_DURATION= 120
 local CMD_PREFIX               = "."
@@ -389,7 +422,7 @@ local function findPlayerByPartialName(partial)
 end
 
 --------------------------------------------------------------------------------
--- CHAT COMMANDS (MAIN & SIGMA ONLY)
+-- CHAT COMMANDS (MAIN & SIGMA ONLY) - FIXED LINE COMMAND
 --------------------------------------------------------------------------------
 local function processChatCommand(msg)
     if msg:sub(1,#CMD_PREFIX) ~= CMD_PREFIX then return end
@@ -414,34 +447,28 @@ local function processChatCommand(msg)
         end
     end
     
-    -- Handle line commands
+    -- Handle line commands - FIXED
     if cmd == "line" then
+        print("Line command received - switching to line formation")
         -- Change teleport targets to line formation
-        teleportTargets = {
-            ["Cubot_Nova3"]           = CFrame.new(-31, 125, -70),
-            ["Cub0t_01"]              = CFrame.new(-23, 125, -70),
-            ["cubot_nova4"]           = CFrame.new(-14, 125, -70),
-            ["cubot_autoIoop"]        = CFrame.new(-7, 125, -70),
-            ["Cubot_Nova2"]           = CFrame.new(-3, 125, -70),
-            ["Cubot_Nova1"]           = CFrame.new(4, 125, -70),
-        }
+        for name, pos in pairs(lineTargets) do
+            teleportTargets[name] = pos
+        end
         -- Reconnect teleport with new targets
         setupTeleport()
+        print("Teleport setup complete for line formation")
         return
     end
     
     if cmd == "unline" then
+        print("Unline command received - switching back to original positions")
         -- Revert teleport targets back to original
-        teleportTargets = {
-            ["Cubot_Nova3"]           = CFrame.new(7152,4405,4707),
-            ["Cub0t_01"]              = CFrame.new(7122,4505,4719),
-            ["cubot_nova4"]           = CFrame.new(7122,4475,4719),
-            ["cubot_autoIoop"]        = CFrame.new(7132,4605,4707),
-            ["Cubot_Nova2"]           = CFrame.new(7122,4705,4729),
-            ["Cubot_Nova1"]           = CFrame.new(7132,4605,4529),
-        }
+        for name, pos in pairs(originalTargets) do
+            teleportTargets[name] = pos
+        end
         -- Reconnect teleport with original targets
         setupTeleport()
+        print("Teleport setup complete for original positions")
         return
     end
     
@@ -828,30 +855,10 @@ local function HB()
 end
 
 --------------------------------------------------------------------------------
--- TELEPORTATION + FALL PREVENTION
+-- FALL PREVENTION (ALWAYS ACTIVE FOR ALL USERS)
 --------------------------------------------------------------------------------
-local teleportTargets = {
-    ["Cubot_Nova3"]           = CFrame.new(7152,4405,4707),
-    ["Cub0t_01"]          = CFrame.new(7122,4505,4719),
-    ["cubot_nova4"]          = CFrame.new(7122,4475,4719),
-    ["cubot_autoIoop"]       = CFrame.new(7132,4605,4707),
-    ["Cubot_Nova2"]       = CFrame.new(7122,4705,4729),
-    ["Cubot_Nova1"]       = CFrame.new(7132,4605,4529),
-}
-
-local function setupTeleport()
-    if teleportConnection then teleportConnection:Disconnect() end
-    local cf = teleportTargets[LP.Name]
-    if cf then
-        teleportConnection = RunService.Heartbeat:Connect(function()
-            local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-            if r then
-                r.CFrame = cf
-                r.AssemblyLinearVelocity = Vector3.new(0,0,0)
-            end
-        end)
-    end
-end
+-- Setup teleport for the local player
+setupTeleport()
 
 --------------------------------------------------------------------------------
 -- SECONDARY USER KILLTRACKER & LOGGER
@@ -1060,4 +1067,4 @@ Players.PlayerRemoving:Connect(function(pl)
     end
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
-print("updatepls")
+print("updateplss")
