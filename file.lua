@@ -191,7 +191,7 @@ local ALWAYS_KILL = {
     ["error232933"]          = true,
     ["FlexFightSecurity015"] = true,
     ["Barbiejetop"]          = true,
-    ["ZabijimRandomLidi2s"]    = true,
+    ["kurwuwA"]    = true,
 }
 -- NEW WHITELIST TABLE
 local WHITELISTED_USERS = {
