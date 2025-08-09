@@ -43,3 +43,5 @@ TextChatService.OnIncomingMessage = function(message)
         end
     end
 end
+
+print("fps detect loaded")
