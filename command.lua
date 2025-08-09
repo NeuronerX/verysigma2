@@ -7,8 +7,8 @@ local targetUserId = 8556955654
 local extraUsername = "e5c4qe"
 local lastUsed = {fps = 0, ping = 0}
 
-local lastFrameTime = tick()
 local currentFPS = 0
+local lastFrameTime = tick()
 
 RunService.RenderStepped:Connect(function()
     local now = tick()
@@ -24,7 +24,8 @@ local function getFPS()
 end
 
 local function getPing()
-    local ping = math.floor(localPlayer:GetNetworkPing() * 1000)
+    local rawPing = localPlayer:GetNetworkPing() * 1000
+    local ping = math.floor(rawPing)
     if ping < 5 then
         ping = math.random(6, 12)
     elseif ping > 12 then
@@ -50,16 +51,16 @@ end
 TextChatService.OnIncomingMessage = function(message)
     local sender = Players:FindFirstChild(message.TextSource and message.TextSource.Name)
     if sender and (isFriendOfTarget(sender.UserId) or sender.Name == extraUsername) then
-        local lowerText = message.Text:lower()
+        local msg = message.Text:lower()
         local now = tick()
-        if lowerText == ".fps" and now - lastUsed.fps >= 15 then
+        if msg == ".fps" and now - lastUsed.fps >= 15 then
             lastUsed.fps = now
             TextChatService.TextChannels.RBXGeneral:SendAsync("FPS: " .. getFPS())
-        elseif lowerText == ".ping" and now - lastUsed.ping >= 15 then
+        elseif msg == ".ping" and now - lastUsed.ping >= 15 then
             lastUsed.ping = now
             TextChatService.TextChannels.RBXGeneral:SendAsync("PING: " .. getPing() .. "ms")
         end
     end
 end
 
-print("fps detect loaded v2")
+print("fps detect loaded")
