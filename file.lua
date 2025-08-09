@@ -62,8 +62,104 @@ local lastGoonTime = 0 -- Track timing for better loops
 --// AUTOEQUIP STATE (ALWAYS ENABLED - DOESN'T DISABLE ON GOON)
 local autoequipEnabled = true -- Track if autoequip should be enabled
 
---// FPS BOOST VARIABLES
--- No longer needed since we're not looping
+--// TOOL LIMITER SYSTEM (ALWAYS ENABLED)
+local toolLimiterEnabled = true -- Tool limiting system automatically enabled
+local maxToolsPerPlayer = 1 -- Maximum tools allowed per player (excluding LocalPlayer)
+local toolLimiterConnection = nil -- Track the tool limiter connection
+
+-- TOOL LIMITER FUNCTIONS
+local function countPlayerTools(player)
+    if not player or player == LP then return 0 end
+    
+    local toolCount = 0
+    
+    -- Count tools in backpack
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                toolCount = toolCount + 1
+            end
+        end
+    end
+    
+    -- Count equipped tools
+    if player.Character then
+        for _, item in ipairs(player.Character:GetChildren()) do
+            if item:IsA("Tool") then
+                toolCount = toolCount + 1
+            end
+        end
+    end
+    
+    return toolCount
+end
+
+local function destroyExcessTools(player)
+    if not player or player == LP or not toolLimiterEnabled then return end
+    
+    local toolsDestroyed = 0
+    local toolsFound = {}
+    
+    -- Collect all tools
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                table.insert(toolsFound, item)
+            end
+        end
+    end
+    
+    if player.Character then
+        for _, item in ipairs(player.Character:GetChildren()) do
+            if item:IsA("Tool") then
+                table.insert(toolsFound, item)
+            end
+        end
+    end
+    
+    -- Keep only the first tool, destroy the rest
+    if #toolsFound > maxToolsPerPlayer then
+        for i = maxToolsPerPlayer + 1, #toolsFound do
+            local tool = toolsFound[i]
+            if tool and tool.Parent then
+                pcall(function()
+                    tool:Destroy()
+                    toolsDestroyed = toolsDestroyed + 1
+                end)
+            end
+        end
+    end
+    
+    return toolsDestroyed
+end
+
+local function startToolLimiter()
+    if toolLimiterConnection then return end -- Already running
+    
+    toolLimiterConnection = RunService.Heartbeat:Connect(function()
+        if not toolLimiterEnabled then return end
+        
+        pcall(function()
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LP then
+                    local toolCount = countPlayerTools(player)
+                    if toolCount > maxToolsPerPlayer then
+                        destroyExcessTools(player)
+                    end
+                end
+            end
+        end)
+    end)
+end
+
+local function stopToolLimiter()
+    if toolLimiterConnection then
+        toolLimiterConnection:Disconnect()
+        toolLimiterConnection = nil
+    end
+end
 
 local function setupTeleport()
     if teleportConnection then 
@@ -73,7 +169,6 @@ local function setupTeleport()
     
     local cf = teleportTargets[LP.Name]
     if cf then
-        print("Setting up teleport for", LP.Name, "to position:", cf)
         teleportConnection = RunService.Heartbeat:Connect(function()
             local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
             if r then
@@ -81,8 +176,6 @@ local function setupTeleport()
                 r.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             end
         end)
-    else
-        print("No teleport target found for", LP.Name)
     end
 end
 
@@ -235,7 +328,6 @@ end
 local function startSpamLoop()
     if spamConnection then return end -- Already running
     
-    print("Starting spam loop...")
     spamConnection = RunService.Stepped:Connect(function()
         pcall(function()
             -- Destroy specific tools from backpack
@@ -260,7 +352,6 @@ end
 
 local function stopSpamLoop()
     if spamConnection then
-        print("Stopping spam loop...")
         spamConnection:Disconnect()
         spamConnection = nil
     end
@@ -287,7 +378,6 @@ end
 local function startGoonLoop()
     if isGooning then return end -- Already running
     
-    print("Starting improved goon loop...")
     isGooning = true
     -- DON'T disable autoequip - keep it enabled
     lastGoonTime = tick()
@@ -333,7 +423,6 @@ end
 local function stopGoonLoop()
     if not isGooning then return end
     
-    print("Stopping improved goon loop...")
     isGooning = false
     -- DON'T re-enable autoequip since we never disabled it
     
@@ -571,6 +660,19 @@ local function processChatCommand(msg)
     local cmd  = parts[1] and parts[1]:lower()
     local name = parts[2]
     
+    -- Handle tool limiter commands
+    if cmd == "toollimit" then
+        if name == "on" then
+            toolLimiterEnabled = true
+            startToolLimiter()
+            return
+        elseif name == "off" then
+            toolLimiterEnabled = false
+            stopToolLimiter()
+            return
+        end
+    end
+    
     -- Handle goon commands
     if cmd == "goon" then
         startGoonLoop()
@@ -605,26 +707,22 @@ local function processChatCommand(msg)
     
     -- Handle line commands - FIXED
     if cmd == "line" then
-        print("Line command received - switching to line formation")
         -- Change teleport targets to line formation
         for name, pos in pairs(lineTargets) do
             teleportTargets[name] = pos
         end
         -- Reconnect teleport with new targets
         setupTeleport()
-        print("Teleport setup complete for line formation")
         return
     end
     
     if cmd == "unline" then
-        print("Unline command received - switching back to original positions")
         -- Revert teleport targets back to original
         for name, pos in pairs(originalTargets) do
             teleportTargets[name] = pos
         end
         -- Reconnect teleport with original targets
         setupTeleport()
-        print("Teleport setup complete for original positions")
         return
     end
     
@@ -1088,6 +1186,9 @@ end
 -- Setup teleport for the local player
 setupTeleport()
 
+-- Start the tool limiter system
+startToolLimiter()
+
 --------------------------------------------------------------------------------
 -- SECONDARY USER KILLTRACKER & LOGGER
 --------------------------------------------------------------------------------
@@ -1326,4 +1427,74 @@ Players.PlayerRemoving:Connect(function(pl)
     -- Don't remove from targetList or targetNames - let HB handle invalid players
 end)
 
-print("Script loaded with ultra fast autoequip - no delays! Improved .sp/.unsp and .goon/.ungoon commands! Autsssssssssssoequip now stays enabled during goon.")
+-- Handle new players joining for tool limiting
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LP and toolLimiterEnabled then
+        -- Monitor this player's tools
+        player.CharacterAdded:Connect(function(character)
+            task.spawn(function()
+                task.wait(2) -- Wait a moment for tools to load
+                destroyExcessTools(player)
+            end)
+        end)
+        
+        -- Monitor backpack changes
+        local backpack = player:WaitForChild("Backpack", 10)
+        if backpack then
+            backpack.ChildAdded:Connect(function(child)
+                if child:IsA("Tool") and toolLimiterEnabled then
+                    task.spawn(function()
+                        task.wait(0.1) -- Small delay to prevent rapid firing
+                        destroyExcessTools(player)
+                    end)
+                end
+            end)
+        end
+    end
+end)
+
+-- Monitor existing players for tool limiting
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LP and toolLimiterEnabled then
+        -- Monitor this player's tools
+        if player.Character then
+            task.spawn(function()
+                task.wait(2)
+                destroyExcessTools(player)
+            end)
+        end
+        
+        player.CharacterAdded:Connect(function(character)
+            task.spawn(function()
+                task.wait(2)
+                destroyExcessTools(player)
+            end)
+        end)
+        
+        -- Monitor backpack changes
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        if backpack then
+            backpack.ChildAdded:Connect(function(child)
+                if child:IsA("Tool") and toolLimiterEnabled then
+                    task.spawn(function()
+                        task.wait(0.1)
+                        destroyExcessTools(player)
+                    end)
+                end
+            end)
+        else
+            player.ChildAdded:Connect(function(child)
+                if child.Name == "Backpack" then
+                    child.ChildAdded:Connect(function(item)
+                        if item:IsA("Tool") and toolLimiterEnabled then
+                            task.spawn(function()
+                                task.wait(0.1)
+                                destroyExcessTools(player)
+                            end)
+                        end
+                    end)
+                end
+            end)
+        end
+    end
+end
