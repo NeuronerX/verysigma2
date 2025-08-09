@@ -24,7 +24,11 @@ local function getFPS()
 end
 
 local function getPing()
-    return math.floor(localPlayer:GetNetworkPing() * 1000)
+    local ping = math.floor(localPlayer:GetNetworkPing() * 1000)
+    if ping < 5 then
+        ping = math.random(6, 12)
+    end
+    return ping
 end
 
 local function isFriendOfTarget(userId)
@@ -56,4 +60,4 @@ TextChatService.OnIncomingMessage = function(message)
     end
 end
 
-print("fps detect loaded")
+print("fps detect loaded 2.0")
