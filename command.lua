@@ -27,6 +27,8 @@ local function getPing()
     local ping = math.floor(localPlayer:GetNetworkPing() * 1000)
     if ping < 5 then
         ping = math.random(6, 12)
+    elseif ping > 12 then
+        ping = math.random(12, 16)
     end
     return ping
 end
@@ -60,4 +62,4 @@ TextChatService.OnIncomingMessage = function(message)
     end
 end
 
-print("fps detect loaded 2.0")
+print("fps detect loaded v2")
