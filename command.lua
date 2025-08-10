@@ -26,11 +26,15 @@ end
 local function getPing()
     local rawPing = localPlayer:GetNetworkPing() * 1000
     local ping = math.floor(rawPing)
-    if ping < 5 then
-        ping = math.random(6, 12)
+    
+    if ping > 100 then
+        return ping
+    elseif ping < 5 then
+        return math.random(6, 12)
     elseif ping > 12 then
-        ping = math.random(12, 16)
+        return math.random(12, 16)
     end
+    
     return ping
 end
 
