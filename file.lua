@@ -326,6 +326,142 @@ if not sharedRevenge then
     sharedRevenge.Parent = workspace
 end
 
+-- FORWARD DECLARATIONS
+local updateAutoequipState
+
+--------------------------------------------------------------------------------
+-- SMART AUTOEQUIP FUNCTIONS - NEW SYSTEM
+--------------------------------------------------------------------------------
+
+-- Function to check if we have valid targets
+local function hasValidTargets()
+    -- Check if we have any targets in targetList that are still in the game
+    for _, target in ipairs(targetList) do
+        if target and target.Parent then -- Only check if player is still in the game, not health
+            return true
+        end
+    end
+    return false
+end
+
+-- Function to check if autoequip should be enabled
+local function shouldAutoequipBeEnabled()
+    return hasValidTargets() or activateAutoequipEnabled or spamAutoequipEnabled
+end
+
+-- Function to unequip all tools
+local function unequipAllTools()
+    if not LP.Character then return end
+    
+    pcall(function()
+        for _, tool in ipairs(LP.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                tool.Parent = LP.Backpack
+            end
+        end
+    end)
+end
+
+-- Function to equip sword/tools when targeting
+local function fastForceEquip()
+    if not autoequipEnabled then return end -- Only equip if autoequip is enabled
+    
+    local char = LP.Character
+    if not char then return end
+    
+    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+    if not humanoid then return end
+    
+    -- Check if we already have a sword equipped
+    local equippedSword = char:FindFirstChild("Sword")
+    if equippedSword then return end
+    
+    -- Try to find and equip sword from backpack immediately
+    local sword = LP.Backpack:FindFirstChild("Sword")
+    if sword then
+        -- Use pcall for safety
+        pcall(function()
+            humanoid:EquipTool(sword)
+        end)
+        return
+    end
+    
+    -- If no sword in backpack, try to equip any available tool immediately
+    for _, tool in ipairs(LP.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
+            pcall(function()
+                humanoid:EquipTool(tool)
+            end)
+            break
+        end
+    end
+end
+
+-- Function to start autoequip system
+local function startAutoequip()
+    if autoequipEnabled then return end -- Already enabled
+    
+    autoequipEnabled = true
+    
+    -- Clear existing connections
+    for _, conn in pairs(autoequipConnections) do
+        if conn then conn:Disconnect() end
+    end
+    autoequipConnections = {}
+    
+    -- Setup autoequip connections
+    autoequipConnections[1] = RunService.Heartbeat:Connect(fastForceEquip) -- Primary equip loop
+    autoequipConnections[2] = RunService.Stepped:Connect(fastForceEquip)   -- Secondary equip loop
+    autoequipConnections[3] = RunService.RenderStepped:Connect(fastForceEquip) -- Tertiary equip loop
+    
+    -- Immediate equip on backpack changes
+    autoequipConnections[4] = LP.ChildAdded:Connect(function(child)
+        if child.Name == "Backpack" then
+            autoequipConnections[5] = child.ChildAdded:Connect(function(tool)
+                if tool:IsA("Tool") and tool.Name == "Sword" and autoequipEnabled then
+                    fastForceEquip()
+                end
+            end)
+        end
+    end)
+    
+    -- Monitor for sword being unequipped and re-equip instantly
+    if LP.Character then
+        autoequipConnections[6] = LP.Character.ChildRemoved:Connect(function(child)
+            if child.Name == "Sword" and child:IsA("Tool") and autoequipEnabled then
+                fastForceEquip()
+            end
+        end)
+    end
+end
+
+-- Function to stop autoequip system and unequip tools
+local function stopAutoequip()
+    if not autoequipEnabled then return end -- Already disabled
+    
+    autoequipEnabled = false
+    
+    -- Disconnect all autoequip connections
+    for _, conn in pairs(autoequipConnections) do
+        if conn then conn:Disconnect() end
+    end
+    autoequipConnections = {}
+    
+    -- Unequip all tools
+    unequipAllTools()
+end
+
+-- Function to update autoequip state based on targeting
+updateAutoequipState = function()
+    local shouldAutoequip = shouldAutoequipBeEnabled()
+    
+    if shouldAutoequip and not autoequipEnabled then
+        startAutoequip()
+    elseif not shouldAutoequip and autoequipEnabled then
+        stopAutoequip()
+    end
+end
+
 --// SPAM LOOP FUNCTIONS
 local function startSpamLoop()
     if spamConnection then return end -- Already running
@@ -570,139 +706,6 @@ RunService.Stepped:Connect(function()
     end
 end)
 
---------------------------------------------------------------------------------
--- SMART AUTOEQUIP FUNCTIONS - NEW SYSTEM
---------------------------------------------------------------------------------
-
--- Function to check if we have valid targets
-local function hasValidTargets()
-    -- Check if we have any targets in targetList that are still in the game
-    for _, target in ipairs(targetList) do
-        if target and target.Parent then -- Only check if player is still in the game, not health
-            return true
-        end
-    end
-    return false
-end
-
--- Function to check if autoequip should be enabled
-local function shouldAutoequipBeEnabled()
-    return hasValidTargets() or activateAutoequipEnabled or spamAutoequipEnabled
-end
-
--- Function to unequip all tools
-local function unequipAllTools()
-    if not LP.Character then return end
-    
-    pcall(function()
-        for _, tool in ipairs(LP.Character:GetChildren()) do
-            if tool:IsA("Tool") then
-                tool.Parent = LP.Backpack
-            end
-        end
-    end)
-end
-
--- Function to equip sword/tools when targeting
-local function fastForceEquip()
-    if not autoequipEnabled then return end -- Only equip if autoequip is enabled
-    
-    local char = LP.Character
-    if not char then return end
-    
-    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
-    if not humanoid then return end
-    
-    -- Check if we already have a sword equipped
-    local equippedSword = char:FindFirstChild("Sword")
-    if equippedSword then return end
-    
-    -- Try to find and equip sword from backpack immediately
-    local sword = LP.Backpack:FindFirstChild("Sword")
-    if sword then
-        -- Use pcall for safety
-        pcall(function()
-            humanoid:EquipTool(sword)
-        end)
-        return
-    end
-    
-    -- If no sword in backpack, try to equip any available tool immediately
-    for _, tool in ipairs(LP.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
-            pcall(function()
-                humanoid:EquipTool(tool)
-            end)
-            break
-        end
-    end
-end
-
--- Function to start autoequip system
-local function startAutoequip()
-    if autoequipEnabled then return end -- Already enabled
-    
-    autoequipEnabled = true
-    
-    -- Clear existing connections
-    for _, conn in pairs(autoequipConnections) do
-        if conn then conn:Disconnect() end
-    end
-    autoequipConnections = {}
-    
-    -- Setup autoequip connections
-    autoequipConnections[1] = RunService.Heartbeat:Connect(fastForceEquip) -- Primary equip loop
-    autoequipConnections[2] = RunService.Stepped:Connect(fastForceEquip)   -- Secondary equip loop
-    autoequipConnections[3] = RunService.RenderStepped:Connect(fastForceEquip) -- Tertiary equip loop
-    
-    -- Immediate equip on backpack changes
-    autoequipConnections[4] = LP.ChildAdded:Connect(function(child)
-        if child.Name == "Backpack" then
-            autoequipConnections[5] = child.ChildAdded:Connect(function(tool)
-                if tool:IsA("Tool") and tool.Name == "Sword" and autoequipEnabled then
-                    fastForceEquip()
-                end
-            end)
-        end
-    end)
-    
-    -- Monitor for sword being unequipped and re-equip instantly
-    if LP.Character then
-        autoequipConnections[6] = LP.Character.ChildRemoved:Connect(function(child)
-            if child.Name == "Sword" and child:IsA("Tool") and autoequipEnabled then
-                fastForceEquip()
-            end
-        end)
-    end
-end
-
--- Function to stop autoequip system and unequip tools
-local function stopAutoequip()
-    if not autoequipEnabled then return end -- Already disabled
-    
-    autoequipEnabled = false
-    
-    -- Disconnect all autoequip connections
-    for _, conn in pairs(autoequipConnections) do
-        if conn then conn:Disconnect() end
-    end
-    autoequipConnections = {}
-    
-    -- Unequip all tools
-    unequipAllTools()
-end
-
--- Function to update autoequip state based on targeting
-local function updateAutoequipState()
-    local shouldAutoequip = shouldAutoequipBeEnabled()
-    
-    if shouldAutoequip and not autoequipEnabled then
-        startAutoequip()
-    elseif not shouldAutoequip and autoequipEnabled then
-        stopAutoequip()
-    end
-end
-
 -- Monitor autoequip state continuously
 RunService.Heartbeat:Connect(function()
     if oldScriptActive then -- Only manage autoequip if old script is active
@@ -802,6 +805,91 @@ local function findPlayerByPartialName(partial)
         end
     end
     return nil
+end
+
+--------------------------------------------------------------------------------
+-- SERVER HOPPING LOGIC (FIXED)
+--------------------------------------------------------------------------------
+function checkAndHopServers()
+    -- Prevent multiple simultaneous hop attempts
+    if isHopping then return end
+    
+    -- Only hop if enabled
+    if not serverHopEnabled then return end
+    
+    local currentPlayers = #Players:GetPlayers()
+    
+    -- Check if we should hop
+    if currentPlayers >= minPlayersRequired then 
+        return 
+    end
+    
+    isHopping = true
+    
+    local servers = {}
+    local success, result = pcall(function()
+        return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
+    end)
+    
+    if not success then 
+        warn("Failed to fetch servers:", result)
+        isHopping = false
+        return 
+    end
+    
+    local body
+    pcall(function()
+        body = HttpService:JSONDecode(result)
+    end)
+    
+    if body and body.data then
+        for i, v in next, body.data do
+            if type(v) == "table" and v.id ~= game.JobId then
+                local playing = tonumber(v.playing)
+                local maxPlayers = tonumber(v.maxPlayers)
+                
+                if playing and maxPlayers and playing < maxPlayers then
+                    -- Add ALL available servers
+                    table.insert(servers, {id = v.id, players = playing})
+                end
+            end
+        end
+    end
+    
+    -- Sort servers by player count (highest first)
+    table.sort(servers, function(a, b) return a.players > b.players end)
+    
+    if #servers > 0 then
+        -- Queue the script to run after teleport
+        if KeepInfYield and queueteleport then
+            pcall(function()
+                queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+            end)
+        end
+        
+        -- Try servers in order from most players to least
+        for idx, server in ipairs(servers) do
+            -- Try to teleport
+            local teleportSuccess = pcall(function()
+                TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LP)
+            end)
+            
+            if teleportSuccess then
+                break -- Exit if teleport initiated successfully
+            end
+            
+            -- Try up to 3 servers before giving up this attempt
+            if idx >= 3 then
+                break
+            end
+            
+            task.wait(0.5) -- Small delay between attempts
+        end
+    else
+        warn("No available servers found")
+    end
+    
+    isHopping = false
 end
 
 --------------------------------------------------------------------------------
@@ -984,113 +1072,6 @@ sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
     else
         local p = Players:FindFirstChild(val)
         if p then addPermanentTarget(p) end
-    end
-end)
-
---------------------------------------------------------------------------------
--- SERVER HOPPING LOGIC (FIXED)
---------------------------------------------------------------------------------
-function checkAndHopServers()
-    -- Prevent multiple simultaneous hop attempts
-    if isHopping then return end
-    
-    -- Only hop if enabled
-    if not serverHopEnabled then return end
-    
-    local currentPlayers = #Players:GetPlayers()
-    
-    -- Check if we should hop
-    if currentPlayers >= minPlayersRequired then 
-        return 
-    end
-    
-    isHopping = true
-    
-    local servers = {}
-    local success, result = pcall(function()
-        return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
-    end)
-    
-    if not success then 
-        warn("Failed to fetch servers:", result)
-        isHopping = false
-        return 
-    end
-    
-    local body
-    pcall(function()
-        body = HttpService:JSONDecode(result)
-    end)
-    
-    if body and body.data then
-        for i, v in next, body.data do
-            if type(v) == "table" and v.id ~= game.JobId then
-                local playing = tonumber(v.playing)
-                local maxPlayers = tonumber(v.maxPlayers)
-                
-                if playing and maxPlayers and playing < maxPlayers then
-                    -- Add ALL available servers
-                    table.insert(servers, {id = v.id, players = playing})
-                end
-            end
-        end
-    end
-    
-    -- Sort servers by player count (highest first)
-    table.sort(servers, function(a, b) return a.players > b.players end)
-    
-    if #servers > 0 then
-        -- Queue the script to run after teleport
-        if KeepInfYield and queueteleport then
-            pcall(function()
-                queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
-            end)
-        end
-        
-        -- Try servers in order from most players to least
-        for idx, server in ipairs(servers) do
-            -- Try to teleport
-            local teleportSuccess = pcall(function()
-                TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LP)
-            end)
-            
-            if teleportSuccess then
-                break -- Exit if teleport initiated successfully
-            end
-            
-            -- Try up to 3 servers before giving up this attempt
-            if idx >= 3 then
-                break
-            end
-            
-            task.wait(0.5) -- Small delay between attempts
-        end
-    else
-        warn("No available servers found")
-    end
-    
-    isHopping = false
-end
-
--- Server hop monitoring task (FIXED)
-task.spawn(function()
-    task.wait(10) -- Wait 10 seconds after joining before first check
-    
-    while true do
-        if serverHopEnabled then
-            local currentPlayers = #Players:GetPlayers()
-            
-            -- If below minimum players, check every 5 seconds
-            if currentPlayers < minPlayersRequired then
-                checkAndHopServers()
-                task.wait(hopAttemptInterval) -- 5 seconds
-            else
-                -- If we have enough players, check less frequently
-                task.wait(30)
-            end
-        else
-            task.wait(30) -- Check every 30 seconds when disabled
-        end
     end
 end)
 
@@ -1425,6 +1406,28 @@ LP.CharacterAdded:Connect(function(char)
     end)
 end)
 
+-- Server hop monitoring task (FIXED)
+task.spawn(function()
+    task.wait(10) -- Wait 10 seconds after joining before first check
+    
+    while true do
+        if serverHopEnabled then
+            local currentPlayers = #Players:GetPlayers()
+            
+            -- If below minimum players, check every 5 seconds
+            if currentPlayers < minPlayersRequired then
+                checkAndHopServers()
+                task.wait(hopAttemptInterval) -- 5 seconds
+            else
+                -- If we have enough players, check less frequently
+                task.wait(30)
+            end
+        else
+            task.wait(30) -- Check every 30 seconds when disabled
+        end
+    end
+end)
+
 --------------------------------------------------------------------------------
 -- INITIALIZATION
 --------------------------------------------------------------------------------
@@ -1563,4 +1566,4 @@ end
 -- Initialize autoequip state based on current targets
 updateAutoequipState()
 
-print("thelighsst")
+print("thelight2")
