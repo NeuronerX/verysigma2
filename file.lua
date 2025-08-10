@@ -298,7 +298,6 @@ local WHITELISTED_USERS = {
 local targetList               = {}    -- Active player objects being targeted
 local targetNames              = {}    -- Names of players to target (persists)
 local temporaryTargets         = {}
-local oneShotTargets           = {}   -- for .kill
 local killTracker              = {}
 local DMG_TIMES                = 2
 local FT_TIMES                 = 5
@@ -590,7 +589,6 @@ local function removeTarget(pl)
     if not pl or ALWAYS_KILL[pl.Name] then return false end
     targetNames[pl.Name] = nil
     temporaryTargets[pl.Name] = nil
-    oneShotTargets[pl.Name] = nil
     -- Remove from targetList
     for i=#targetList,1,-1 do
         if targetList[i] == pl then
@@ -752,11 +750,6 @@ local function processChatCommand(msg)
         addPermanentTarget(pl)
     elseif cmd == "unloop" then
         removeTarget(pl)
-    elseif cmd == "kill" then
-        oneShotTargets[pl.Name] = true
-        if not targetNames[pl.Name] then
-            table.insert(targetList, pl)
-        end
     end
 end
 
@@ -766,13 +759,14 @@ local function setupTextChatCommandHandler()
             TextChatService.MessageReceived:Connect(function(txtMsg)
                 local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                 if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
-                    local m = txtMsg.Text:lower()
-                    if m == ".activate" then
+                    local messageText = txtMsg.Text
+                    -- Fixed activate command detection
+                    if messageText == ".activate" then
                         execute()
-                    elseif m == ".update" then
+                    elseif messageText == ".update" then
                         sharedRevenge.Value = "UPDATE"
                     else
-                        processChatCommand(txtMsg.Text)
+                        processChatCommand(messageText)
                     end
                 end
             end)
@@ -784,13 +778,14 @@ local function setupTextChatCommandHandler()
                     msgEvent.OnClientEvent:Connect(function(data)
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
-                            local m = data.Message:lower()
-                            if m == ".activate" then
+                            local messageText = data.Message
+                            -- Fixed activate command detection
+                            if messageText == ".activate" then
                                 execute()
-                            elseif m == ".update" then
+                            elseif messageText == ".update" then
                                 sharedRevenge.Value = "UPDATE"
                             else
-                                processChatCommand(data.Message)
+                                processChatCommand(messageText)
                             end
                         end
                     end)
@@ -1113,7 +1108,7 @@ local function CreateBoxReach(tool)
 end
 
 --------------------------------------------------------------------------------
--- DAMAGE & KILLLOOP (+ one‐shot)
+-- DAMAGE & KILLLOOP
 --------------------------------------------------------------------------------
 -- Check if firetouchinterest exists before using it
 local firetouchinterest = firetouchinterest
@@ -1164,15 +1159,7 @@ local function HB()
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
                 local r = p.Character:FindFirstChild("HumanoidRootPart")
                 if h and r and h.Health>0 then
-                    -- Use pcall to safely access p.Name
-                    local success, playerName = pcall(function() return p.Name end)
-                    if success and oneShotTargets[playerName] then
-                        MH(reach,p)
-                        oneShotTargets[playerName] = nil
-                        removeTarget(p)
-                    else
-                        MH(reach,p)
-                    end
+                    MH(reach,p)
                 end
             end
         end
