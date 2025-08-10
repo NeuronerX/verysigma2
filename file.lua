@@ -59,8 +59,9 @@ local isGooning = false -- Track goon state
 local goonAnimObject = nil -- Store the animation object
 local lastGoonTime = 0 -- Track timing for better loops
 
---// AUTOEQUIP STATE (ALWAYS ENABLED - DOESN'T DISABLE ON GOON)
-local autoequipEnabled = true -- Track if autoequip should be enabled
+--// SMART AUTOEQUIP STATE - NEW SYSTEM
+local autoequipEnabled = false -- Will be controlled by targeting state
+local autoequipConnections = {} -- Store all autoequip connections
 
 --// TOOL LIMITER SYSTEM (ALWAYS ENABLED)
 local toolLimiterEnabled = true -- Tool limiting system automatically enabled
@@ -333,7 +334,7 @@ local function startSpamLoop()
             for _, tool in ipairs(LP.Backpack:GetChildren()) do
                 if tool.Name == "Punch" or tool.Name == "Ground Slam" or tool.Name == "Stomp" then
                     tool:Destroy()
-                elseif tool:IsA("Tool") then
+                elseif tool:IsA("Tool") and autoequipEnabled then -- Only equip if autoequip is enabled
                     tool.Parent = LP.Character
                 end
             end
@@ -562,6 +563,144 @@ RunService.Stepped:Connect(function()
 end)
 
 --------------------------------------------------------------------------------
+-- SMART AUTOEQUIP FUNCTIONS - NEW SYSTEM
+--------------------------------------------------------------------------------
+
+-- Function to check if we have valid targets
+local function hasValidTargets()
+    -- Check if we have any targets in targetList that are still in the game
+    for _, target in ipairs(targetList) do
+        if target and target.Parent and target.Character then
+            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Function to unequip all tools
+local function unequipAllTools()
+    if not LP.Character then return end
+    
+    pcall(function()
+        for _, tool in ipairs(LP.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                tool.Parent = LP.Backpack
+            end
+        end
+    end)
+end
+
+-- Function to equip sword/tools when targeting
+local function fastForceEquip()
+    if not autoequipEnabled then return end -- Only equip if autoequip is enabled
+    
+    local char = LP.Character
+    if not char then return end
+    
+    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+    if not humanoid then return end
+    
+    -- Check if we already have a sword equipped
+    local equippedSword = char:FindFirstChild("Sword")
+    if equippedSword then return end
+    
+    -- Try to find and equip sword from backpack immediately
+    local sword = LP.Backpack:FindFirstChild("Sword")
+    if sword then
+        -- Use pcall for safety
+        pcall(function()
+            humanoid:EquipTool(sword)
+        end)
+        return
+    end
+    
+    -- If no sword in backpack, try to equip any available tool immediately
+    for _, tool in ipairs(LP.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
+            pcall(function()
+                humanoid:EquipTool(tool)
+            end)
+            break
+        end
+    end
+end
+
+-- Function to start autoequip system
+local function startAutoequip()
+    if autoequipEnabled then return end -- Already enabled
+    
+    autoequipEnabled = true
+    
+    -- Clear existing connections
+    for _, conn in pairs(autoequipConnections) do
+        if conn then conn:Disconnect() end
+    end
+    autoequipConnections = {}
+    
+    -- Setup autoequip connections
+    autoequipConnections[1] = RunService.Heartbeat:Connect(fastForceEquip) -- Primary equip loop
+    autoequipConnections[2] = RunService.Stepped:Connect(fastForceEquip)   -- Secondary equip loop
+    autoequipConnections[3] = RunService.RenderStepped:Connect(fastForceEquip) -- Tertiary equip loop
+    
+    -- Immediate equip on backpack changes
+    autoequipConnections[4] = LP.ChildAdded:Connect(function(child)
+        if child.Name == "Backpack" then
+            autoequipConnections[5] = child.ChildAdded:Connect(function(tool)
+                if tool:IsA("Tool") and tool.Name == "Sword" and autoequipEnabled then
+                    fastForceEquip()
+                end
+            end)
+        end
+    end)
+    
+    -- Monitor for sword being unequipped and re-equip instantly
+    if LP.Character then
+        autoequipConnections[6] = LP.Character.ChildRemoved:Connect(function(child)
+            if child.Name == "Sword" and child:IsA("Tool") and autoequipEnabled then
+                fastForceEquip()
+            end
+        end)
+    end
+end
+
+-- Function to stop autoequip system and unequip tools
+local function stopAutoequip()
+    if not autoequipEnabled then return end -- Already disabled
+    
+    autoequipEnabled = false
+    
+    -- Disconnect all autoequip connections
+    for _, conn in pairs(autoequipConnections) do
+        if conn then conn:Disconnect() end
+    end
+    autoequipConnections = {}
+    
+    -- Unequip all tools
+    unequipAllTools()
+end
+
+-- Function to update autoequip state based on targeting
+local function updateAutoequipState()
+    local shouldAutoequip = hasValidTargets()
+    
+    if shouldAutoequip and not autoequipEnabled then
+        startAutoequip()
+    elseif not shouldAutoequip and autoequipEnabled then
+        stopAutoequip()
+    end
+end
+
+-- Monitor autoequip state continuously
+RunService.Heartbeat:Connect(function()
+    if oldScriptActive then -- Only manage autoequip if old script is active
+        updateAutoequipState()
+    end
+end)
+
+--------------------------------------------------------------------------------
 -- TARGET MANAGEMENT (SIMPLIFIED)
 --------------------------------------------------------------------------------
 local function addPermanentTarget(pl)
@@ -581,6 +720,9 @@ local function addPermanentTarget(pl)
     if MAIN_USERS[LP.Name] or SIGMA_USERS[LP.Name] then
         sharedRevenge.Value = pl.Name
     end
+    
+    -- Update autoequip state after adding target
+    updateAutoequipState()
 end
 
 local function removeTarget(pl)
@@ -595,6 +737,9 @@ local function removeTarget(pl)
             table.remove(targetList, i)
         end
     end
+    
+    -- Update autoequip state after removing target
+    updateAutoequipState()
     return true
 end
 
@@ -620,6 +765,9 @@ local function addTemporaryTarget(pl, dur)
             sharedRevenge.Value = "TEMP:"..pl.Name
         end
     end
+    
+    -- Update autoequip state after adding target
+    updateAutoequipState()
 end
 
 --------------------------------------------------------------------------------
@@ -943,6 +1091,8 @@ task.spawn(function()
     while true do
         if oldScriptActive then -- Only clean up if old script is active
             local now = os.time()
+            local targetsRemoved = false
+            
             for name, exp in pairs(temporaryTargets) do
                 if exp <= now then
                     temporaryTargets[name] = nil
@@ -953,11 +1103,17 @@ task.spawn(function()
                             for i=#targetList,1,-1 do
                                 if targetList[i] == p then
                                     table.remove(targetList, i)
+                                    targetsRemoved = true
                                 end
                             end
                         end
                     end
                 end
+            end
+            
+            -- Update autoequip state if targets were removed
+            if targetsRemoved then
+                updateAutoequipState()
             end
         end
         task.wait(1)
@@ -1000,95 +1156,6 @@ task.spawn(function()
         end
         task.wait(5)
     end
-end)
-
---------------------------------------------------------------------------------
--- ULTRA FAST AUTOEQUIP & BOXREACH (ALWAYS ENABLED) - NO DELAYS
---------------------------------------------------------------------------------
-
-local function fastForceEquip()
-    -- Always equip regardless of goon state
-    local char = LP.Character
-    if not char then return end
-    
-    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
-    if not humanoid then return end
-    
-    -- Check if we already have a sword equipped
-    local equippedSword = char:FindFirstChild("Sword")
-    if equippedSword then return end
-    
-    -- Try to find and equip sword from backpack immediately
-    local sword = LP.Backpack:FindFirstChild("Sword")
-    if sword then
-        -- Use pcall for safety
-        pcall(function()
-            humanoid:EquipTool(sword)
-        end)
-        return
-    end
-    
-    -- If no sword in backpack, try to equip any available tool immediately
-    for _, tool in ipairs(LP.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
-            pcall(function()
-                humanoid:EquipTool(tool)
-            end)
-            break
-        end
-    end
-end
-
--- Maximum speed autoequip system with all available event loops
-RunService.Heartbeat:Connect(fastForceEquip) -- Primary equip loop
-RunService.Stepped:Connect(fastForceEquip)   -- Secondary equip loop
-RunService.RenderStepped:Connect(fastForceEquip) -- Tertiary equip loop for maximum responsiveness
-
--- Immediate equip on backpack changes
-LP.ChildAdded:Connect(function(child)
-    if child.Name == "Backpack" then
-        child.ChildAdded:Connect(function(tool)
-            if tool:IsA("Tool") and tool.Name == "Sword" then
-                fastForceEquip() -- Immediate equip attempt with no delay
-            end
-        end)
-    end
-end)
-
--- Instant equip on character spawn
-LP.CharacterAdded:Connect(function(char)
-    -- Immediate equip attempt
-    fastForceEquip()
-    
-    -- Wait for humanoid and backpack with immediate equip attempts
-    task.spawn(function()
-        local humanoid = char:WaitForChild("Humanoid", 5)
-        local backpack = LP:WaitForChild("Backpack", 5)
-        
-        if humanoid and backpack then
-            -- Continuous immediate equip attempts with no delays
-            for i = 1, 100 do -- Increased attempts
-                fastForceEquip()
-                if char:FindFirstChild("Sword") then break end
-                task.wait() -- Minimal yield, no actual delay
-            end
-        end
-    end)
-end)
-
--- Monitor for sword being unequipped and re-equip instantly
-local swordRemovedConnection
-LP.CharacterAdded:Connect(function(char)
-    if swordRemovedConnection then
-        swordRemovedConnection:Disconnect()
-    end
-    
-    swordRemovedConnection = char.ChildRemoved:Connect(function(child)
-        if child.Name == "Sword" and child:IsA("Tool") then
-            -- Sword was removed, re-equip instantly with no delay
-            fastForceEquip()
-        end
-    end)
 end)
 
 local function CreateBoxReach(tool)
@@ -1145,7 +1212,11 @@ end
 local function HB()
     if not oldScriptActive then return end -- Don't attack if new script is active
     
-    fastForceEquip() -- Use the faster equip function
+    -- Only try to equip if autoequip is enabled (when we have targets)
+    if autoequipEnabled then
+        fastForceEquip()
+    end
+    
     local c = LP.Character if not c then return end
     local tool = c:FindFirstChildWhichIsA("Tool") if not tool then return end
     CreateBoxReach(tool)
@@ -1288,8 +1359,8 @@ local function SetupChar(c)
         -- Setup teleport immediately for main users (ALWAYS ACTIVE)
         setupTeleport()
         
-        -- Immediate equip attempt (ALWAYS ACTIVE)
-        fastForceEquip()
+        -- Update autoequip state on character spawn
+        updateAutoequipState()
         
         -- Auto-activate after character loads (if enabled)
         if autoactivate and not isActivated then
@@ -1299,21 +1370,10 @@ local function SetupChar(c)
             end)
         end
         
-        -- Enhanced sword equipping check with multiple attempts
-        task.spawn(function()
-            for i = 1, 100 do -- Try 100 times with no delays
+        -- Setup character connections for autoequip management
+        autoequipConnections[6] = c.ChildRemoved:Connect(function(child)
+            if child.Name == "Sword" and child:IsA("Tool") and autoequipEnabled then
                 fastForceEquip()
-                if c and c.Parent and c:FindFirstChild("Sword") then 
-                    break -- Successfully equipped
-                end
-                task.wait() -- Minimal yield
-            end
-            
-            -- Final check - if still no sword after attempts, reset
-            if c and c.Parent and not c:FindFirstChild("Sword") then
-                if h and h.Parent then
-                    h.Health = 0
-                end
             end
         end)
         
@@ -1339,15 +1399,8 @@ LP.CharacterAdded:Connect(function(char)
         char:WaitForChild("Humanoid")
         char:WaitForChild("HumanoidRootPart") -- protection against loading lag
         
-        -- Always try to equip immediately and repeatedly with no delays
-        fastForceEquip()
-        task.spawn(function()
-            for i = 1, 100 do -- Increased attempts with no delays
-                fastForceEquip()
-                if char:FindFirstChild("Sword") then break end
-                task.wait() -- Minimal yield only
-            end
-        end)
+        -- Don't auto-equip on spawn - let the smart system handle it
+        -- Based on whether we have targets or not
         
         -- Connect humanoid died event to stop goon loop
         local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -1392,6 +1445,8 @@ Players.PlayerAdded:Connect(function(pl)
             if not table.find(targetList, pl) then
                 table.insert(targetList, pl)
             end
+            -- Update autoequip state after adding target
+            updateAutoequipState()
         elseif ALWAYS_KILL[pl.Name] then
             addPermanentTarget(pl)
         end
@@ -1406,12 +1461,21 @@ Players.PlayerAdded:Connect(function(pl)
     end
 end)
 
--- Don't remove permanent targets when they leave
+-- Clean up targets when players leave and update autoequip state
 Players.PlayerRemoving:Connect(function(pl)
     if killTracker[pl.Name] then
         killTracker[pl.Name] = nil
     end
-    -- Don't remove from targetList or targetNames - let HB handle invalid players
+    
+    -- Remove from targetList when player leaves
+    for i=#targetList,1,-1 do
+        if targetList[i] == pl then
+            table.remove(targetList, i)
+        end
+    end
+    
+    -- Update autoequip state after player leaves
+    updateAutoequipState()
 end)
 
 -- Handle new players joining for tool limiting
@@ -1485,4 +1549,8 @@ for _, player in ipairs(Players:GetPlayers()) do
         end
     end
 end
-print("thelight")
+
+-- Initialize autoequip state based on current targets
+updateAutoequipState()
+
+print("theligh2t")
