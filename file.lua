@@ -451,6 +451,11 @@ local function execute()
     isActivated = true
     -- Keep oldScriptActive = true so old features continue working
     
+    -- Enable autoequip when .activate is used
+    if not autoequipEnabled then
+        startAutoequip()
+    end
+    
     -- DON'T clear targets - let them persist
     -- DON'T disconnect killloop - let it keep running
     
@@ -1553,4 +1558,4 @@ end
 -- Initialize autoequip state based on current targets
 updateAutoequipState()
 
-print("theligh2t")
+print("thelight")
