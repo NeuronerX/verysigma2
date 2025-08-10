@@ -284,10 +284,10 @@ local ALWAYS_KILL = {
     ["Dirdaclub"]     = true,
     ["BmwFounder"]           = true,
     ["mmmnmmmmnmmmnmmmmmmn"]             = true,
-    ["Tvuj_ciko"]              = true,
-    ["error232933"]          = true,
+    ["Tvuj_ciksso"]              = true,
+    ["GUMIDKOVA2010"]          = true,
     ["FlexFightSecurity015"] = true,
-    ["Barbiejetop"]          = true,
+    ["nechmelol2"]          = true,
     ["Latticeon"]    = true,
 }
 -- NEW WHITELIST TABLE
@@ -334,14 +334,24 @@ local updateAutoequipState
 -- SMART AUTOEQUIP FUNCTIONS - FIXED SYSTEM
 --------------------------------------------------------------------------------
 
--- Function to check if we have valid targets
+-- FIXED: Function to check if we have valid targets
 local function hasValidTargets()
-    -- Check if we have any targets in targetList that are still in the game
-    for _, target in ipairs(targetList) do
-        if target and target.Parent then -- Only check if player is still in the game, not health
+    -- Check permanent targets (targetNames)
+    for name, _ in pairs(targetNames) do
+        local player = Players:FindFirstChild(name)
+        if player then -- Player exists in game
             return true
         end
     end
+    
+    -- Check temporary targets
+    for name, _ in pairs(temporaryTargets) do
+        local player = Players:FindFirstChild(name)
+        if player then -- Player exists in game
+            return true
+        end
+    end
+    
     return false
 end
 
@@ -735,7 +745,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 --------------------------------------------------------------------------------
--- TARGET MANAGEMENT (SIMPLIFIED)
+-- TARGET MANAGEMENT (SIMPLIFIED) - FIXED
 --------------------------------------------------------------------------------
 local function addPermanentTarget(pl)
     if not oldScriptActive then return end -- Don't add targets if new script is active
@@ -1101,7 +1111,7 @@ sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
 end)
 
 --------------------------------------------------------------------------------
--- CLEANUP TEMP TARGETS (SIMPLIFIED)
+-- CLEANUP TEMP TARGETS - FIXED
 --------------------------------------------------------------------------------
 task.spawn(function()
     while true do
@@ -1473,13 +1483,13 @@ if oldScriptActive then
     end
 end
 
--- Check for persistent targets when players join
+-- FIXED: Check for persistent targets when players join
 Players.PlayerAdded:Connect(function(pl)
     killTracker[pl.Name] = {kills={}, lastRespawn=0}
     
     if oldScriptActive then
         -- If this player was a target before, re-add them
-        if targetNames[pl.Name] then
+        if targetNames[pl.Name] or temporaryTargets[pl.Name] then
             if not table.find(targetList, pl) then
                 table.insert(targetList, pl)
             end
@@ -1499,13 +1509,13 @@ Players.PlayerAdded:Connect(function(pl)
     end
 end)
 
--- Clean up targets when players leave and update autoequip state
+-- FIXED: Clean up targets when players leave and update autoequip state
 Players.PlayerRemoving:Connect(function(pl)
     if killTracker[pl.Name] then
         killTracker[pl.Name] = nil
     end
     
-    -- Remove from targetList when player leaves
+    -- Remove from targetList when player leaves (but keep in targetNames/temporaryTargets for persistence)
     for i=#targetList,1,-1 do
         if targetList[i] == pl then
             table.remove(targetList, i)
@@ -1591,4 +1601,4 @@ end
 -- Initialize autoequip state based on current targets
 updateAutoequipState()
 
-print("thelight")
+print("thel222ight")
