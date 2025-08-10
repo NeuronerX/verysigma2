@@ -51,6 +51,7 @@ local oldScriptActive = true -- Track if old script features are active
 
 --// SPAM LOOP VARIABLES
 local spamConnection = nil -- Track the spam loop connection
+local spamAutoequipEnabled = false -- Track if spam enabled autoequip
 
 --// IMPROVED GOON LOOP VARIABLES
 local goonConnection = nil -- Track the goon loop connection
@@ -62,6 +63,7 @@ local lastGoonTime = 0 -- Track timing for better loops
 --// SMART AUTOEQUIP STATE - NEW SYSTEM
 local autoequipEnabled = false -- Will be controlled by targeting state
 local autoequipConnections = {} -- Store all autoequip connections
+local activateAutoequipEnabled = false -- Track if .activate enabled autoequip
 
 --// TOOL LIMITER SYSTEM (ALWAYS ENABLED)
 local toolLimiterEnabled = true -- Tool limiting system automatically enabled
@@ -328,6 +330,9 @@ end
 local function startSpamLoop()
     if spamConnection then return end -- Already running
     
+    spamAutoequipEnabled = true -- Enable autoequip when spam starts
+    updateAutoequipState() -- Update autoequip state
+    
     spamConnection = RunService.Stepped:Connect(function()
         pcall(function()
             -- Destroy specific tools from backpack
@@ -355,6 +360,9 @@ local function stopSpamLoop()
         spamConnection:Disconnect()
         spamConnection = nil
     end
+    
+    spamAutoequipEnabled = false -- Disable spam autoequip
+    updateAutoequipState() -- Update autoequip state (will check other conditions)
 end
 
 --// IMPROVED GOON LOOP FUNCTIONS
@@ -450,11 +458,6 @@ local function execute()
     -- Set activation state but DON'T disable old script
     isActivated = true
     -- Keep oldScriptActive = true so old features continue working
-    
-    -- Enable autoequip when .activate is used
-    if not autoequipEnabled then
-        startAutoequip()
-    end
     
     -- DON'T clear targets - let them persist
     -- DON'T disconnect killloop - let it keep running
@@ -575,14 +578,16 @@ end)
 local function hasValidTargets()
     -- Check if we have any targets in targetList that are still in the game
     for _, target in ipairs(targetList) do
-        if target and target.Parent and target.Character then
-            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                return true
-            end
+        if target and target.Parent then -- Only check if player is still in the game, not health
+            return true
         end
     end
     return false
+end
+
+-- Function to check if autoequip should be enabled
+local function shouldAutoequipBeEnabled()
+    return hasValidTargets() or activateAutoequipEnabled or spamAutoequipEnabled
 end
 
 -- Function to unequip all tools
@@ -689,7 +694,7 @@ end
 
 -- Function to update autoequip state based on targeting
 local function updateAutoequipState()
-    local shouldAutoequip = hasValidTargets()
+    local shouldAutoequip = shouldAutoequipBeEnabled()
     
     if shouldAutoequip and not autoequipEnabled then
         startAutoequip()
@@ -1558,4 +1563,4 @@ end
 -- Initialize autoequip state based on current targets
 updateAutoequipState()
 
-print("thelight")
+print("thelighsst")
