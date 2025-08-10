@@ -45,9 +45,10 @@ local serverHopEnabled = true -- Set to false to disable server hopping
 local minPlayersRequired = 4 -- Will hop if less than this many players
 local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum players
 
---// ACTIVATION STATE
+--// ACTIVATION STATE - FIXED
 local isActivated = false -- Track if new script is activated
 local oldScriptActive = true -- Track if old script features are active
+local externalScriptLoaded = false -- Track if external script was loaded
 
 --// SPAM LOOP VARIABLES
 local spamConnection = nil -- Track the spam loop connection
@@ -60,7 +61,7 @@ local isGooning = false -- Track goon state
 local goonAnimObject = nil -- Store the animation object
 local lastGoonTime = 0 -- Track timing for better loops
 
---// SMART AUTOEQUIP STATE - NEW SYSTEM
+--// SMART AUTOEQUIP STATE - FIXED SYSTEM
 local autoequipEnabled = false -- Will be controlled by targeting state
 local autoequipConnections = {} -- Store all autoequip connections
 local activateAutoequipEnabled = false -- Track if .activate enabled autoequip
@@ -330,7 +331,7 @@ end
 local updateAutoequipState
 
 --------------------------------------------------------------------------------
--- SMART AUTOEQUIP FUNCTIONS - NEW SYSTEM
+-- SMART AUTOEQUIP FUNCTIONS - FIXED SYSTEM
 --------------------------------------------------------------------------------
 
 -- Function to check if we have valid targets
@@ -402,6 +403,7 @@ local function startAutoequip()
     if autoequipEnabled then return end -- Already enabled
     
     autoequipEnabled = true
+    print("Autoequip enabled") -- Debug print
     
     -- Clear existing connections
     for _, conn in pairs(autoequipConnections) do
@@ -440,6 +442,7 @@ local function stopAutoequip()
     if not autoequipEnabled then return end -- Already disabled
     
     autoequipEnabled = false
+    print("Autoequip disabled") -- Debug print
     
     -- Disconnect all autoequip connections
     for _, conn in pairs(autoequipConnections) do
@@ -589,23 +592,41 @@ local function stopGoonLoop()
     end
 end
 
---// FIXED EXECUTE FUNCTION
+--// FIXED EXECUTE FUNCTION - MAIN FIX
 local function execute()
-    -- Set activation state but DON'T disable old script
+    -- Prevent multiple executions
+    if isActivated then
+        print("Already activated")
+        return
+    end
+    
+    -- Set activation state
     isActivated = true
-    -- Keep oldScriptActive = true so old features continue working
+    activateAutoequipEnabled = true -- Enable autoequip through activation
+    print("Activation initiated")
     
-    -- DON'T clear targets - let them persist
-    -- DON'T disconnect killloop - let it keep running
+    -- Update autoequip state immediately
+    updateAutoequipState()
     
-    -- Load the new script alongside the old one with better error handling
-    local success, err = pcall(function()
-        local scriptContent = game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua')
-        loadstring(scriptContent)()
-    end)
-    
-    if not success then
-        warn("Failed to load aci.lua:", err)
+    -- Load the external script ONLY ONCE with better error handling
+    if not externalScriptLoaded then
+        local success, err = pcall(function()
+            local scriptContent = game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua')
+            loadstring(scriptContent)()
+        end)
+        
+        if success then
+            externalScriptLoaded = true
+            print("External script loaded successfully")
+        else
+            warn("Failed to load aci.lua:", err)
+            -- Reset activation state on failure
+            isActivated = false
+            activateAutoequipEnabled = false
+            updateAutoequipState()
+        end
+    else
+        print("External script already loaded")
     end
 end
 
@@ -893,7 +914,7 @@ function checkAndHopServers()
 end
 
 --------------------------------------------------------------------------------
--- CHAT COMMANDS (MAIN & SIGMA ONLY) - UPDATED WITH SP COMMANDS
+-- CHAT COMMANDS (MAIN & SIGMA ONLY) - FIXED WITH PROPER ACTIVATE
 --------------------------------------------------------------------------------
 local function processChatCommand(msg)
     if msg:sub(1,#CMD_PREFIX) ~= CMD_PREFIX then return end
@@ -903,6 +924,12 @@ local function processChatCommand(msg)
     end
     local cmd  = parts[1] and parts[1]:lower()
     local name = parts[2]
+    
+    -- Handle activate command - FIXED
+    if cmd == "activate" then
+        execute()
+        return
+    end
     
     -- Handle tool limiter commands
     if cmd == "toollimit" then
@@ -1006,13 +1033,12 @@ local function setupTextChatCommandHandler()
                 local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                 if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
                     local messageText = txtMsg.Text
-                    -- Fixed activate command detection
-                    if messageText == ".activate" then
-                        execute()
-                    elseif messageText == ".update" then
+                    -- Process all commands through the main handler
+                    processChatCommand(messageText)
+                    
+                    -- Handle update separately
+                    if messageText == ".update" then
                         sharedRevenge.Value = "UPDATE"
-                    else
-                        processChatCommand(messageText)
                     end
                 end
             end)
@@ -1025,13 +1051,12 @@ local function setupTextChatCommandHandler()
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             local messageText = data.Message
-                            -- Fixed activate command detection
-                            if messageText == ".activate" then
-                                execute()
-                            elseif messageText == ".update" then
+                            -- Process all commands through the main handler
+                            processChatCommand(messageText)
+                            
+                            -- Handle update separately
+                            if messageText == ".update" then
                                 sharedRevenge.Value = "UPDATE"
-                            else
-                                processChatCommand(messageText)
                             end
                         end
                     end)
@@ -1566,4 +1591,4 @@ end
 -- Initialize autoequip state based on current targets
 updateAutoequipState()
 
-print("thelight2")
+print("thelight")
