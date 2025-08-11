@@ -10,6 +10,7 @@ local lastUsed = {fps = 0, ping = 0}
 local currentFPS = 0
 local lastFrameTime = tick()
 
+-- FPS calculation
 RunService.RenderStepped:Connect(function()
     local now = tick()
     local dt = now - lastFrameTime
@@ -26,15 +27,15 @@ end
 local function getPing()
     local rawPing = localPlayer:GetNetworkPing() * 1000
     local ping = math.floor(rawPing)
-    
-    if ping > 100 then
+
+    if ping > 55 then
         return ping
     elseif ping < 5 then
-        return math.random(6, 12)
-    elseif ping > 12 then
-        return math.random(12, 16)
+        return math.random(6, 9)
+    elseif ping > 10 then
+        return math.random(10, 13)
     end
-    
+
     return ping
 end
 
@@ -52,19 +53,33 @@ local function isFriendOfTarget(userId)
     return false
 end
 
-TextChatService.OnIncomingMessage = function(message)
-    local sender = Players:FindFirstChild(message.TextSource and message.TextSource.Name)
-    if sender and (isFriendOfTarget(sender.UserId) or sender.Name == extraUsername) then
-        local msg = message.Text:lower()
-        local now = tick()
-        if msg == ".fps" and now - lastUsed.fps >= 15 then
-            lastUsed.fps = now
-            TextChatService.TextChannels.RBXGeneral:SendAsync("FPS: " .. getFPS())
-        elseif msg == ".ping" and now - lastUsed.ping >= 15 then
-            lastUsed.ping = now
-            TextChatService.TextChannels.RBXGeneral:SendAsync("PING: " .. getPing() .. "ms")
-        end
+local function safeSendMessage(text)
+    local channel = TextChatService:FindFirstChild("RBXGeneral")
+    if channel then
+        pcall(function()
+            channel:SendAsync(text)
+        end)
     end
 end
 
-print("fps detect loaded")
+-- Proper event connection
+TextChatService.OnIncomingMessage:Connect(function(message)
+    local source = message.TextSource
+    if not source then return end
+
+    local sender = Players:FindFirstChild(source.Name)
+    if sender and (isFriendOfTarget(sender.UserId) or sender.Name == extraUsername) then
+        local msg = message.Text:lower()
+        local now = tick()
+
+        if msg == ".fps" and now - lastUsed.fps >= 15 then
+            lastUsed.fps = now
+            safeSendMessage("FPS: " .. getFPS())
+        elseif msg == ".ping" and now - lastUsed.ping >= 15 then
+            lastUsed.ping = now
+            safeSendMessage("PING: " .. getPing() .. "ms")
+        end
+    end
+end)
+
+print("fps detect loaded (fixed)")
