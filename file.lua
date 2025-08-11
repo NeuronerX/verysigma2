@@ -709,6 +709,39 @@ local function removeTarget(pl)
     return true
 end
 
+-- NEW FUNCTION: Remove all targets except ALWAYS_KILL
+local function removeAllTargetsExceptAlwaysKill()
+    if not oldScriptActive then return 0 end
+    
+    local removedCount = 0
+    
+    -- Clear targetNames except ALWAYS_KILL
+    for name, _ in pairs(targetNames) do
+        if not ALWAYS_KILL[name] then
+            targetNames[name] = nil
+            removedCount = removedCount + 1
+        end
+    end
+    
+    -- Clear all temporary targets
+    for name, _ in pairs(temporaryTargets) do
+        temporaryTargets[name] = nil
+        removedCount = removedCount + 1
+    end
+    
+    -- Rebuild targetList with only ALWAYS_KILL players
+    targetList = {}
+    for name, _ in pairs(ALWAYS_KILL) do
+        local player = Players:FindFirstChild(name)
+        if player then
+            table.insert(targetList, player)
+        end
+    end
+    
+    updateAutoequipState()
+    return removedCount
+end
+
 local function addTemporaryTarget(pl, dur)
     if not oldScriptActive or not pl or 
        MAIN_USERS[pl.Name] or SECONDARY_MAIN_USERS[pl.Name] or 
@@ -823,7 +856,7 @@ local function checkAndHopServers()
     isHopping = false
 end
 
--- CHAT COMMANDS
+-- ENHANCED CHAT COMMANDS
 local function processChatCommand(msg)
     if msg:sub(1, #CMD_PREFIX) ~= CMD_PREFIX then return end
     
@@ -833,7 +866,7 @@ local function processChatCommand(msg)
     end
     
     local cmd = parts[1] and parts[1]:lower()
-    local name = parts[2]
+    local name = parts[2] and parts[2]:lower()
     
     if cmd == "activate" then
         execute()
@@ -899,8 +932,16 @@ local function processChatCommand(msg)
         return
     end
     
+    -- Handle .unloop all command (separate from player search)
+    if cmd == "unloop" and name == "all" then
+        local removedCount = removeAllTargetsExceptAlwaysKill()
+        print("Removed " .. removedCount .. " targets (keeping ALWAYS_KILL players)")
+        return
+    end
+    
+    -- Regular player-specific commands
     if not cmd or not name then return end
-    local player = findPlayerByPartialName(name)
+    local player = findPlayerByPartialName(parts[2]) -- Use original case for player search
     if not player then return end
 
     if cmd == "loop" then
@@ -1434,4 +1475,4 @@ end
 -- Initialize autoequip state
 updateAutoequipState()
 
-print("Enhanced script loaded - optimized and faster")
+print("Enhanced script loaded - optimized and faster with .unloop all command")
