@@ -53,11 +53,22 @@ local function isFriendOfTarget(userId)
     return false
 end
 
+-- Wait until RBXGeneral exists
+local function getChannel(name)
+    local channel = TextChatService.TextChannels:FindFirstChild(name)
+    while not channel do
+        TextChatService.TextChannels.ChildAdded:Wait()
+        channel = TextChatService.TextChannels:FindFirstChild(name)
+    end
+    return channel
+end
+
+local generalChannel = getChannel("RBXGeneral")
+
 local function safeSendMessage(text)
-    local channel = TextChatService:FindFirstChild("RBXGeneral")
-    if channel then
+    if generalChannel then
         pcall(function()
-            channel:SendAsync(text)
+            generalChannel:SendAsync(text)
         end)
     end
 end
@@ -82,4 +93,4 @@ TextChatService.OnIncomingMessage:Connect(function(message)
     end
 end)
 
-print("fps detect loaded (fixed)")
+print("fps detect loaded (new TextChatService safe)")
