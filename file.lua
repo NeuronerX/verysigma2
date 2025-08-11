@@ -915,13 +915,16 @@ local function setupTextChatCommandHandler()
     pcall(function()
         if TextChatService and TextChatService.MessageReceived then
             TextChatService.MessageReceived:Connect(function(txtMsg)
-                local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
-                if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
-                    local messageText = txtMsg.Text
-                    processChatCommand(messageText)
-                    
-                    if messageText == ".update" then
-                        sharedRevenge.Value = "UPDATE"
+                -- Fixed line 918 - Added proper nil checks
+                if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
+                    local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
+                    if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
+                        local messageText = txtMsg.Text
+                        processChatCommand(messageText)
+                        
+                        if messageText == ".update" then
+                            sharedRevenge.Value = "UPDATE"
+                        end
                     end
                 end
             end)
