@@ -73,8 +73,8 @@ local function safeSendMessage(text)
     end
 end
 
--- Proper event connection
-TextChatService.OnIncomingMessage:Connect(function(message)
+-- Correct for new TextChatService: assign callback instead of :Connect()
+TextChatService.OnIncomingMessage = function(message)
     local source = message.TextSource
     if not source then return end
 
@@ -91,6 +91,6 @@ TextChatService.OnIncomingMessage:Connect(function(message)
             safeSendMessage("PING: " .. getPing() .. "ms")
         end
     end
-end)
+end
 
-print("fps detect loaded (new TextChatService safe)")
+print("fps detect loaded (new callback style)")
