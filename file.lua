@@ -3,11 +3,20 @@ local StarterGui = game:GetService("StarterGui")
 local CoreGui = game:GetService("CoreGui")
 local TextChatService = game:GetService("TextChatService")
 local RunService = game:GetService("RunService")
-loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
-local LP = Players.LocalPlayer
-local teleportConnection
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- CENTRALIZED TELEPORT TARGETS (FIXED DUPLICATE ISSUE)
+-- Load external command script
+pcall(function()
+    loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
+end)
+
+local LP = Players.LocalPlayer
+local PlaceId = game.PlaceId
+
+-- CENTRALIZED TELEPORT TARGETS
 local teleportTargets = {
     ["Cubot_Nova3"]     = CFrame.new(7152,4405,4707),
     ["Cub0t_01"]        = CFrame.new(7122,4505,4719),
@@ -37,59 +46,133 @@ local lineTargets = {
     ["Cubot_Nova1"]     = CFrame.new(4, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
 }
 
---// AUTO ACTIVATE SETTING (REMOVED DUPLICATE)
-local autoactivate = false -- Set to false to disable auto-activation
+-- CONFIGURATION
+local autoactivate = false
+local serverHopEnabled = true
+local minPlayersRequired = 4
+local hopAttemptInterval = 3 -- Reduced from 5 to 3 seconds
+local isActivated = false
+local oldScriptActive = true
+local externalScriptLoaded = false
 
---// SERVER HOP SETTINGS
-local serverHopEnabled = true -- Set to false to disable server hopping
-local minPlayersRequired = 4 -- Will hop if less than this many players
-local hopAttemptInterval = 5 -- Try to hop every 5 seconds when below minimum players
+-- STATE VARIABLES
+local spamConnection = nil
+local spamAutoequipEnabled = false
+local goonConnection = nil
+local goonAnimTrack = nil
+local isGooning = false
+local goonAnimObject = nil
+local autoequipEnabled = false
+local autoequipConnections = {}
+local activateAutoequipEnabled = false
+local teleportConnection = nil
 
---// ACTIVATION STATE - FIXED
-local isActivated = false -- Track if new script is activated
-local oldScriptActive = true -- Track if old script features are active
-local externalScriptLoaded = false -- Track if external script was loaded
+-- TOOL LIMITER (ALWAYS ENABLED - REMOVED COMMANDS)
+local maxToolsPerPlayer = 1
+local toolLimiterConnection = nil
 
---// SPAM LOOP VARIABLES
-local spamConnection = nil -- Track the spam loop connection
-local spamAutoequipEnabled = false -- Track if spam enabled autoequip
+-- TARGET MANAGEMENT
+local targetList = {}
+local targetNames = {}
+local temporaryTargets = {}
+local killTracker = {}
+local DMG_TIMES = 3 -- Increased from 2 to 3
+local FT_TIMES = 7 -- Increased from 5 to 7
+local CN = nil
+local TEMP_TARGET_DURATION = 99999999999
+local SECONDARY_TARGET_DURATION = 120
+local CMD_PREFIX = "."
+local TOOL_COUNT_THRESHOLD = 200 -- Reduced from 250 to 200
+local lastServerCheck = 0
+local isHopping = false
 
---// IMPROVED GOON LOOP VARIABLES
-local goonConnection = nil -- Track the goon loop connection
-local goonAnimTrack = nil -- Track the animation
-local isGooning = false -- Track goon state
-local goonAnimObject = nil -- Store the animation object
-local lastGoonTime = 0 -- Track timing for better loops
+-- USER TABLES
+local MAIN_USERS = {
+    ["cubot_autoIoop"] = true,
+    ["Cubot_Nova2"] = true,
+    ["Cubot_Nova3"] = true,
+    ["cubot_nova4"] = true,
+    ["Cub0t_01"] = true,
+    ["FlexFightPro68"] = true,
+    ["Iamnotrealyblack"] = true,
+}
 
---// SMART AUTOEQUIP STATE - FIXED SYSTEM
-local autoequipEnabled = false -- Will be controlled by targeting state
-local autoequipConnections = {} -- Store all autoequip connections
-local activateAutoequipEnabled = false -- Track if .activate enabled autoequip
+local SIGMA_USERS = {
+    ["FlexFightPro68"] = true,
+    ["Iamnotrealyblack"] = true,
+    ["e5c4qe"] = true,
+}
 
---// TOOL LIMITER SYSTEM (ALWAYS ENABLED)
-local toolLimiterEnabled = true -- Tool limiting system automatically enabled
-local maxToolsPerPlayer = 1 -- Maximum tools allowed per player (excluding LocalPlayer)
-local toolLimiterConnection = nil -- Track the tool limiter connection
+local SECONDARY_MAIN_USERS = {
+    ["sssssss"] = true,
+}
 
--- TOOL LIMITER FUNCTIONS
+local ALWAYS_KILL = {
+    ["lurty15109"] = true,
+    ["ccccc"] = true,
+    ["GoatReflex"] = true,
+    ["Dirdaclub"] = true,
+    ["BmwFounder"] = true,
+    ["mmmnmmmmnmmmnmmmmmmn"] = true,
+    ["Tvuj_ciksso"] = true,
+    ["GUMIDKOVA2010"] = true,
+    ["FlexFightSecurity015"] = true,
+    ["nechmelol2"] = true,
+    ["Latticeon"] = true,
+}
+
+local WHITELISTED_USERS = {
+    ["e5c4qe"] = true,
+    ["xL1fe_r"] = true,
+    ["xL1v3_r"] = true,
+    ["xLiv3_r"] = true,
+}
+
+-- SHARED REVENGE OBJECT
+local sharedRevenge = workspace:FindFirstChild("SharedRevenge")
+if not sharedRevenge then
+    sharedRevenge = Instance.new("StringValue")
+    sharedRevenge.Name = "SharedRevenge"
+    sharedRevenge.Parent = workspace
+end
+
+-- QUEUE ON TELEPORT SETUP
+local KeepInfYield = true
+local TeleportCheck = false
+local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+
+LP.OnTeleport:Connect(function()
+    if KeepInfYield and not TeleportCheck and queueteleport then
+        TeleportCheck = true
+        pcall(function()
+            queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+        end)
+    end
+end)
+
+-- Initialize targetNames with ALWAYS_KILL users
+for name, _ in pairs(ALWAYS_KILL) do
+    targetNames[name] = true
+end
+
+-- OPTIMIZED TOOL LIMITER FUNCTIONS
 local function countPlayerTools(player)
     if not player or player == LP then return 0 end
     
     local toolCount = 0
-    
-    -- Count tools in backpack
     local backpack = player:FindFirstChildOfClass("Backpack")
+    local character = player.Character
+    
     if backpack then
-        for _, item in ipairs(backpack:GetChildren()) do
+        for _, item in pairs(backpack:GetChildren()) do
             if item:IsA("Tool") then
                 toolCount = toolCount + 1
             end
         end
     end
     
-    -- Count equipped tools
-    if player.Character then
-        for _, item in ipairs(player.Character:GetChildren()) do
+    if character then
+        for _, item in pairs(character:GetChildren()) do
             if item:IsA("Tool") then
                 toolCount = toolCount + 1
             end
@@ -100,30 +183,31 @@ local function countPlayerTools(player)
 end
 
 local function destroyExcessTools(player)
-    if not player or player == LP or not toolLimiterEnabled then return end
+    if not player or player == LP then return end
     
     local toolsDestroyed = 0
     local toolsFound = {}
-    
-    -- Collect all tools
     local backpack = player:FindFirstChildOfClass("Backpack")
+    local character = player.Character
+    
+    -- Collect all tools more efficiently
     if backpack then
-        for _, item in ipairs(backpack:GetChildren()) do
+        for _, item in pairs(backpack:GetChildren()) do
             if item:IsA("Tool") then
                 table.insert(toolsFound, item)
             end
         end
     end
     
-    if player.Character then
-        for _, item in ipairs(player.Character:GetChildren()) do
+    if character then
+        for _, item in pairs(character:GetChildren()) do
             if item:IsA("Tool") then
                 table.insert(toolsFound, item)
             end
         end
     end
     
-    -- Keep only the first tool, destroy the rest
+    -- Destroy excess tools
     if #toolsFound > maxToolsPerPlayer then
         for i = maxToolsPerPlayer + 1, #toolsFound do
             local tool = toolsFound[i]
@@ -140,31 +224,21 @@ local function destroyExcessTools(player)
 end
 
 local function startToolLimiter()
-    if toolLimiterConnection then return end -- Already running
+    if toolLimiterConnection then return end
     
     toolLimiterConnection = RunService.Heartbeat:Connect(function()
-        if not toolLimiterEnabled then return end
-        
-        pcall(function()
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= LP then
-                    local toolCount = countPlayerTools(player)
-                    if toolCount > maxToolsPerPlayer then
-                        destroyExcessTools(player)
-                    end
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LP then
+                local toolCount = countPlayerTools(player)
+                if toolCount > maxToolsPerPlayer then
+                    destroyExcessTools(player)
                 end
             end
-        end)
+        end
     end)
 end
 
-local function stopToolLimiter()
-    if toolLimiterConnection then
-        toolLimiterConnection:Disconnect()
-        toolLimiterConnection = nil
-    end
-end
-
+-- OPTIMIZED TELEPORT FUNCTIONS
 local function setupTeleport()
     if teleportConnection then 
         teleportConnection:Disconnect() 
@@ -174,180 +248,84 @@ local function setupTeleport()
     local cf = teleportTargets[LP.Name]
     if cf then
         teleportConnection = RunService.Heartbeat:Connect(function()
-            local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-            if r then
-                r.CFrame = cf
-                r.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            local character = LP.Character
+            if character then
+                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                if rootPart then
+                    rootPart.CFrame = cf
+                    rootPart.AssemblyLinearVelocity = Vector3.zero
+                end
             end
         end)
     end
 end
 
--- Fix anti-AFK with proper error handling
-local GC = getconnections or get_signal_cons
-if GC then
-    local success, connections = pcall(function()
-        return GC(LP.Idled)
-    end)
-    if success and connections then
-        for _, conn in pairs(connections) do
-            if conn.Disable then 
-                pcall(function() conn:Disable() end)
-            elseif conn.Disconnect then 
-                pcall(function() conn:Disconnect() end)
+-- ENHANCED ANTI-AFK
+local function setupAntiAFK()
+    local GC = getconnections or get_signal_cons
+    if GC then
+        local success, connections = pcall(function()
+            return GC(LP.Idled)
+        end)
+        if success and connections then
+            for _, conn in pairs(connections) do
+                pcall(function()
+                    if conn.Disable then 
+                        conn:Disable()
+                    elseif conn.Disconnect then 
+                        conn:Disconnect()
+                    end
+                end)
             end
         end
-    end
-else
-    -- Fallback anti-AFK
-    local success, vu = pcall(function()
-        return game:GetService("VirtualUser")
-    end)
-    if success and vu then
-        LP.Idled:Connect(function()
-            pcall(function()
-                vu:CaptureController()
-                vu:ClickButton2(Vector2.new())
+    else
+        local success, vu = pcall(function()
+            return game:GetService("VirtualUser")
+        end)
+        if success and vu then
+            LP.Idled:Connect(function()
+                pcall(function()
+                    vu:CaptureController()
+                    vu:ClickButton2(Vector2.new())
+                end)
             end)
-        end)
-    end
-end
-
-task.defer(function()
-    pcall(function()
-        StarterGui:SetCore("PlayerListVisibility", false)
-    end)
-
-    pcall(function()
-        if TextChatService.ChatVersion == Enum.ChatVersion.LegacyChatService then
-            StarterGui:SetCore("ChatActive", false)
-        else
-            local chatUI = LP:WaitForChild("PlayerGui"):FindFirstChild("Chat")
-            if chatUI then chatUI.Enabled = false end
         end
-    end)
-
-    pcall(function()
-        local playerList = CoreGui:FindFirstChild("PlayerList")
-        if playerList then playerList:Destroy() end
-    end)
-end)
-
-if game.PlaceId ~= 6110766473 then return end
-
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local Lighting          = game:GetService("Lighting")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TextChatService   = game:GetService("TextChatService")
-local TeleportService   = game:GetService("TeleportService")
-local HttpService       = game:GetService("HttpService")
-local LP                = Players.LocalPlayer
-local PlaceId           = game.PlaceId
-
---// QUEUE ON TELEPORT SETUP
-local KeepInfYield  = true
-local TeleportCheck = false
-local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
-
-LP.OnTeleport:Connect(function()
-    if KeepInfYield and not TeleportCheck and queueteleport then
-        TeleportCheck = true
-        pcall(function()
-            queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
-        end)
     end
-end)
-
---// CONFIGURATION
-local MAIN_USERS = {
-    ["cubot_autoIoop"] = true,
-    ["Cubot_Nova2"] = true,
-    ["Cubot_Nova3"] = true,
-    ["cubot_nova4"] = true,
-    ["Cub0t_01"] = true,
-    ["FlexFightPro68"]   = true,
-    ["Iamnotrealyblack"]  = true,
-}
-local SIGMA_USERS = {
-    ["FlexFightPro68"]   = true,
-    ["Iamnotrealyblack"]  = true,
-    ["e5c4qe"]  = true,
-}
-local SECONDARY_MAIN_USERS = {
-    ["sssssss"] = true,
-}
-local ALWAYS_KILL = {
-    ["lurty15109"] = true,
-    ["ccccc"]               = true,
-    ["GoatReflex"]        = true,
-    ["Dirdaclub"]     = true,
-    ["BmwFounder"]           = true,
-    ["mmmnmmmmnmmmnmmmmmmn"]             = true,
-    ["Tvuj_ciksso"]              = true,
-    ["GUMIDKOVA2010"]          = true,
-    ["FlexFightSecurity015"] = true,
-    ["nechmelol2"]          = true,
-    ["Latticeon"]    = true,
-}
--- NEW WHITELIST TABLE
-local WHITELISTED_USERS = {
-    ["e5c4qe"] = true,
-    ["xL1fe_r"] = true,
-    ["xL1v3_r"] = true,
-    ["xLiv3_r"] = true,
-}
-
---// VARIABLES
-local targetList               = {}    -- Active player objects being targeted
-local targetNames              = {}    -- Names of players to target (persists)
-local temporaryTargets         = {}
-local killTracker              = {}
-local DMG_TIMES                = 2
-local FT_TIMES                 = 5
-local CN                       = nil   -- killloop connection
-local TEMP_TARGET_DURATION     = 99999999999
-local SECONDARY_TARGET_DURATION= 120
-local CMD_PREFIX               = "."
-local TOOL_COUNT_THRESHOLD     = 250
-local lastServerCheck          = 0     -- For server hopping cooldown
-local isHopping                = false -- Prevent multiple hop attempts
-
---// PERSISTENT TARGET TRACKING
--- Initialize targetNames with ALWAYS_KILL users
-for name, _ in pairs(ALWAYS_KILL) do
-    targetNames[name] = true
 end
 
---// SHARED REVENGE OBJECT
-local sharedRevenge = workspace:FindFirstChild("SharedRevenge")
-if not sharedRevenge then
-    sharedRevenge = Instance.new("StringValue")
-    sharedRevenge.Name   = "SharedRevenge"
-    sharedRevenge.Parent = workspace
+-- UI HIDING
+local function hideUI()
+    task.spawn(function()
+        pcall(function()
+            StarterGui:SetCore("PlayerListVisibility", false)
+        end)
+
+        pcall(function()
+            if TextChatService.ChatVersion == Enum.ChatVersion.LegacyChatService then
+                StarterGui:SetCore("ChatActive", false)
+            else
+                local chatUI = LP:WaitForChild("PlayerGui"):FindFirstChild("Chat")
+                if chatUI then chatUI.Enabled = false end
+            end
+        end)
+
+        pcall(function()
+            local playerList = CoreGui:FindFirstChild("PlayerList")
+            if playerList then playerList:Destroy() end
+        end)
+    end)
 end
 
--- FORWARD DECLARATIONS
-local updateAutoequipState
-
---------------------------------------------------------------------------------
--- SMART AUTOEQUIP FUNCTIONS - FIXED SYSTEM
---------------------------------------------------------------------------------
-
--- FIXED: Function to check if we have valid targets
+-- OPTIMIZED TARGET MANAGEMENT
 local function hasValidTargets()
-    -- Check permanent targets (targetNames)
     for name, _ in pairs(targetNames) do
-        local player = Players:FindFirstChild(name)
-        if player then -- Player exists in game
+        if Players:FindFirstChild(name) then
             return true
         end
     end
     
-    -- Check temporary targets
     for name, _ in pairs(temporaryTargets) do
-        local player = Players:FindFirstChild(name)
-        if player then -- Player exists in game
+        if Players:FindFirstChild(name) then
             return true
         end
     end
@@ -355,50 +333,45 @@ local function hasValidTargets()
     return false
 end
 
--- Function to check if autoequip should be enabled
 local function shouldAutoequipBeEnabled()
     return hasValidTargets() or activateAutoequipEnabled or spamAutoequipEnabled
 end
 
--- Function to unequip all tools
 local function unequipAllTools()
-    if not LP.Character then return end
+    local character = LP.Character
+    if not character then return end
     
-    pcall(function()
-        for _, tool in ipairs(LP.Character:GetChildren()) do
-            if tool:IsA("Tool") then
-                tool.Parent = LP.Backpack
-            end
+    for _, tool in pairs(character:GetChildren()) do
+        if tool:IsA("Tool") then
+            tool.Parent = LP.Backpack
         end
-    end)
+    end
 end
 
--- Function to equip sword/tools when targeting
+-- ENHANCED AUTOEQUIP SYSTEM
 local function fastForceEquip()
-    if not autoequipEnabled then return end -- Only equip if autoequip is enabled
+    if not autoequipEnabled then return end
     
-    local char = LP.Character
-    if not char then return end
+    local character = LP.Character
+    if not character then return end
     
-    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+    local humanoid = character:FindFirstChildWhichIsA("Humanoid")
     if not humanoid then return end
     
     -- Check if we already have a sword equipped
-    local equippedSword = char:FindFirstChild("Sword")
-    if equippedSword then return end
+    if character:FindFirstChild("Sword") then return end
     
-    -- Try to find and equip sword from backpack immediately
+    -- Try to find and equip sword from backpack
     local sword = LP.Backpack:FindFirstChild("Sword")
     if sword then
-        -- Use pcall for safety
         pcall(function()
             humanoid:EquipTool(sword)
         end)
         return
     end
     
-    -- If no sword in backpack, try to equip any available tool immediately
-    for _, tool in ipairs(LP.Backpack:GetChildren()) do
+    -- Equip any available tool (except specific ones)
+    for _, tool in pairs(LP.Backpack:GetChildren()) do
         if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
             pcall(function()
                 humanoid:EquipTool(tool)
@@ -408,12 +381,10 @@ local function fastForceEquip()
     end
 end
 
--- Function to start autoequip system
 local function startAutoequip()
-    if autoequipEnabled then return end -- Already enabled
+    if autoequipEnabled then return end
     
     autoequipEnabled = true
-    print("Autoequip enabled") -- Debug print
     
     -- Clear existing connections
     for _, conn in pairs(autoequipConnections) do
@@ -421,12 +392,12 @@ local function startAutoequip()
     end
     autoequipConnections = {}
     
-    -- Setup autoequip connections
-    autoequipConnections[1] = RunService.Heartbeat:Connect(fastForceEquip) -- Primary equip loop
-    autoequipConnections[2] = RunService.Stepped:Connect(fastForceEquip)   -- Secondary equip loop
-    autoequipConnections[3] = RunService.RenderStepped:Connect(fastForceEquip) -- Tertiary equip loop
+    -- Enhanced autoequip connections for faster response
+    autoequipConnections[1] = RunService.Heartbeat:Connect(fastForceEquip)
+    autoequipConnections[2] = RunService.Stepped:Connect(fastForceEquip)
+    autoequipConnections[3] = RunService.RenderStepped:Connect(fastForceEquip)
     
-    -- Immediate equip on backpack changes
+    -- Monitor backpack changes
     autoequipConnections[4] = LP.ChildAdded:Connect(function(child)
         if child.Name == "Backpack" then
             autoequipConnections[5] = child.ChildAdded:Connect(function(tool)
@@ -437,7 +408,7 @@ local function startAutoequip()
         end
     end)
     
-    -- Monitor for sword being unequipped and re-equip instantly
+    -- Monitor character changes
     if LP.Character then
         autoequipConnections[6] = LP.Character.ChildRemoved:Connect(function(child)
             if child.Name == "Sword" and child:IsA("Tool") and autoequipEnabled then
@@ -447,25 +418,20 @@ local function startAutoequip()
     end
 end
 
--- Function to stop autoequip system and unequip tools
 local function stopAutoequip()
-    if not autoequipEnabled then return end -- Already disabled
+    if not autoequipEnabled then return end
     
     autoequipEnabled = false
-    print("Autoequip disabled") -- Debug print
     
-    -- Disconnect all autoequip connections
     for _, conn in pairs(autoequipConnections) do
         if conn then conn:Disconnect() end
     end
     autoequipConnections = {}
     
-    -- Unequip all tools
     unequipAllTools()
 end
 
--- Function to update autoequip state based on targeting
-updateAutoequipState = function()
+local function updateAutoequipState()
     local shouldAutoequip = shouldAutoequipBeEnabled()
     
     if shouldAutoequip and not autoequipEnabled then
@@ -475,32 +441,31 @@ updateAutoequipState = function()
     end
 end
 
---// SPAM LOOP FUNCTIONS
+-- ENHANCED SPAM LOOP
 local function startSpamLoop()
-    if spamConnection then return end -- Already running
+    if spamConnection then return end
     
-    spamAutoequipEnabled = true -- Enable autoequip when spam starts
-    updateAutoequipState() -- Update autoequip state
+    spamAutoequipEnabled = true
+    updateAutoequipState()
     
     spamConnection = RunService.Stepped:Connect(function()
-        pcall(function()
-            -- Destroy specific tools from backpack
-            for _, tool in ipairs(LP.Backpack:GetChildren()) do
-                if tool.Name == "Punch" or tool.Name == "Ground Slam" or tool.Name == "Stomp" then
-                    tool:Destroy()
-                elseif tool:IsA("Tool") and autoequipEnabled then -- Only equip if autoequip is enabled
-                    tool.Parent = LP.Character
-                end
+        -- Destroy unwanted tools and equip others
+        for _, tool in pairs(LP.Backpack:GetChildren()) do
+            if tool.Name == "Punch" or tool.Name == "Ground Slam" or tool.Name == "Stomp" then
+                tool:Destroy()
+            elseif tool:IsA("Tool") and autoequipEnabled then
+                tool.Parent = LP.Character
             end
-            
-            -- Activate equipped tool
-            if LP.Character then
-                local tool = LP.Character:FindFirstChildOfClass("Tool")
-                if tool then
-                    tool:Activate()
-                end
+        end
+        
+        -- Activate equipped tool
+        local character = LP.Character
+        if character then
+            local tool = character:FindFirstChildOfClass("Tool")
+            if tool then
+                tool:Activate()
             end
-        end)
+        end
     end)
 end
 
@@ -510,11 +475,11 @@ local function stopSpamLoop()
         spamConnection = nil
     end
     
-    spamAutoequipEnabled = false -- Disable spam autoequip
-    updateAutoequipState() -- Update autoequip state (will check other conditions)
+    spamAutoequipEnabled = false
+    updateAutoequipState()
 end
 
---// IMPROVED GOON LOOP FUNCTIONS
+-- ENHANCED GOON LOOP
 local function isR15(player)
     local character = player.Character
     if not character then return false end
@@ -533,11 +498,9 @@ local function createGoonAnimation()
 end
 
 local function startGoonLoop()
-    if isGooning then return end -- Already running
+    if isGooning then return end
     
     isGooning = true
-    -- DON'T disable autoequip - keep it enabled
-    lastGoonTime = tick()
     
     goonConnection = RunService.Heartbeat:Connect(function()
         if not isGooning then return end
@@ -545,11 +508,10 @@ local function startGoonLoop()
         local character = LP.Character
         if not character then return end
         
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local humanoid = character:FindFirstChildWhichIsA("Humanoid")
         if not humanoid then return end
         
         pcall(function()
-            -- Clean up old animation track if it exists and isn't playing properly
             if goonAnimTrack then
                 if goonAnimTrack.IsPlaying and goonAnimTrack.TimePosition >= (isR15(LP) and 0.7 or 0.65) then
                     goonAnimTrack:Stop()
@@ -559,7 +521,6 @@ local function startGoonLoop()
                 end
             end
             
-            -- Create new animation track if needed
             if not goonAnimTrack then
                 local animObject = createGoonAnimation()
                 if animObject then
@@ -569,7 +530,6 @@ local function startGoonLoop()
                         goonAnimTrack:Play()
                         goonAnimTrack:AdjustSpeed(isR15(LP) and 0.7 or 0.65)
                         goonAnimTrack.TimePosition = 0.6
-                        lastGoonTime = tick()
                     end
                 end
             end
@@ -581,7 +541,6 @@ local function stopGoonLoop()
     if not isGooning then return end
     
     isGooning = false
-    -- DON'T re-enable autoequip since we never disabled it
     
     if goonConnection then
         goonConnection:Disconnect()
@@ -595,30 +554,20 @@ local function stopGoonLoop()
         goonAnimTrack = nil
     end
     
-    -- Clean up animation object
     if goonAnimObject then
         goonAnimObject:Destroy()
         goonAnimObject = nil
     end
 end
 
---// FIXED EXECUTE FUNCTION - MAIN FIX
+-- ENHANCED EXECUTE FUNCTION
 local function execute()
-    -- Prevent multiple executions
-    if isActivated then
-        print("Already activated")
-        return
-    end
+    if isActivated then return end
     
-    -- Set activation state
     isActivated = true
-    activateAutoequipEnabled = true -- Enable autoequip through activation
-    print("Activation initiated")
-    
-    -- Update autoequip state immediately
+    activateAutoequipEnabled = true
     updateAutoequipState()
     
-    -- Load the external script ONLY ONCE with better error handling
     if not externalScriptLoaded then
         local success, err = pcall(function()
             local scriptContent = game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua')
@@ -627,94 +576,79 @@ local function execute()
         
         if success then
             externalScriptLoaded = true
-            print("External script loaded successfully")
         else
             warn("Failed to load aci.lua:", err)
-            -- Reset activation state on failure
             isActivated = false
             activateAutoequipEnabled = false
             updateAutoequipState()
         end
-    else
-        print("External script already loaded")
     end
 end
 
--- Alias for chat handler compatibility
-local executeActivate = execute
-
---// FPS BOOST FUNCTIONS
+-- FPS BOOST FUNCTIONS
 local function equipAllTools()
-    for i,v in pairs(LP:FindFirstChildOfClass("Backpack"):GetChildren()) do
-        if v:IsA("Tool") or v:IsA("HopperBin") then
-            v.Parent = LP.Character
+    for _, tool in pairs(LP:FindFirstChildOfClass("Backpack"):GetChildren()) do
+        if tool:IsA("Tool") or tool:IsA("HopperBin") then
+            tool.Parent = LP.Character
         end
     end
 end
 
 local function startFPSBoost()
-    -- First, fire the remote 2000 times
     local unlockedSwords = ReplicatedStorage:FindFirstChild("UnlockedSwords")
     if unlockedSwords then
-        for i = 1, 300 do
+        for i = 1, 500 do -- Increased from 300 to 500
             pcall(function()
                 unlockedSwords:FireServer({false, false, false}, "894An3ti44Ex321P3llo99i3t")
             end)
         end
     end
     
-    -- Wait 55 seconds
-    task.wait(10)
-    
-    -- Then equip all tools
+    task.wait(5) -- Reduced from 10 to 5 seconds
     equipAllTools()
 end
 
---------------------------------------------------------------------------------
--- FPS BOOSTER
---------------------------------------------------------------------------------
-do
+-- ENHANCED FPS BOOSTER
+local function optimizeGraphics()
     local Terrain = workspace:FindFirstChildOfClass("Terrain")
     if Terrain then
-        Terrain.WaterWaveSize     = 0
-        Terrain.WaterWaveSpeed    = 0
-        Terrain.WaterReflectance  = 0
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+        Terrain.WaterReflectance = 0
         Terrain.WaterTransparency = 0
     end
-    Lighting.GlobalShadows       = false
-    Lighting.FogEnd              = 9e9
+    
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 9e9
     settings().Rendering.QualityLevel = 1
-
-    for _, v in ipairs(game:GetDescendants()) do
-        if v:IsA("BasePart") then
-            v.Material    = Enum.Material.Plastic
-            v.Reflectance = 0
-        elseif v:IsA("Decal") then
-            v.Transparency = 1
-        elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-            v.Lifetime = NumberRange.new(0)
-        elseif v:IsA("Explosion") then
-            v.BlastPressure = 1
-            v.BlastRadius   = 1
+    
+    -- Enhanced graphics optimization
+    for _, obj in pairs(game:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            obj.Material = Enum.Material.Plastic
+            obj.Reflectance = 0
+        elseif obj:IsA("Decal") then
+            obj.Transparency = 1
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
+            obj.Lifetime = NumberRange.new(0)
+        elseif obj:IsA("Explosion") then
+            obj.BlastPressure = 1
+            obj.BlastRadius = 1
         end
     end
-
-    for _, eff in ipairs(Lighting:GetDescendants()) do
-        if eff:IsA("BlurEffect")
-        or eff:IsA("SunRaysEffect")
-        or eff:IsA("ColorCorrectionEffect")
-        or eff:IsA("BloomEffect")
-        or eff:IsA("DepthOfFieldEffect") then
-            eff.Enabled = false
+    
+    for _, effect in pairs(Lighting:GetDescendants()) do
+        if effect:IsA("BlurEffect") or effect:IsA("SunRaysEffect") or 
+           effect:IsA("ColorCorrectionEffect") or effect:IsA("BloomEffect") or 
+           effect:IsA("DepthOfFieldEffect") then
+            effect.Enabled = false
         end
     end
-
+    
     workspace.DescendantAdded:Connect(function(child)
         task.spawn(function()
-            if child:IsA("ForceField")
-            or child:IsA("Sparkles")
-            or child:IsA("Smoke")
-            or child:IsA("Fire") then
+            if child:IsA("ForceField") or child:IsA("Sparkles") or 
+               child:IsA("Smoke") or child:IsA("Fire") then
                 RunService.Heartbeat:Wait()
                 child:Destroy()
             end
@@ -722,86 +656,73 @@ do
     end)
 end
 
---------------------------------------------------------------------------------
--- ANTI-FLING
---------------------------------------------------------------------------------
-RunService.Stepped:Connect(function()
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LP and pl.Character then
-            for _, part in ipairs(pl.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
+-- ENHANCED ANTI-FLING
+local function setupAntiFling()
+    RunService.Stepped:Connect(function()
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LP and player.Character then
+                for _, part in pairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
                 end
             end
         end
-    end
-end)
+    end)
+end
 
--- Monitor autoequip state continuously
-RunService.Heartbeat:Connect(function()
-    if oldScriptActive then -- Only manage autoequip if old script is active
-        updateAutoequipState()
-    end
-end)
-
---------------------------------------------------------------------------------
--- TARGET MANAGEMENT (SIMPLIFIED) - FIXED
---------------------------------------------------------------------------------
+-- TARGET MANAGEMENT FUNCTIONS
 local function addPermanentTarget(pl)
-    if not oldScriptActive then return end -- Don't add targets if new script is active
-    
-    if not pl
-    or MAIN_USERS[pl.Name]
-    or SECONDARY_MAIN_USERS[pl.Name]
-    or SIGMA_USERS[pl.Name]
-    or WHITELISTED_USERS[pl.Name] then -- Check whitelist
+    if not oldScriptActive or not pl or 
+       MAIN_USERS[pl.Name] or SECONDARY_MAIN_USERS[pl.Name] or 
+       SIGMA_USERS[pl.Name] or WHITELISTED_USERS[pl.Name] then
         return
     end
+    
     targetNames[pl.Name] = true
     if not table.find(targetList, pl) then
         table.insert(targetList, pl)
     end
+    
     if MAIN_USERS[LP.Name] or SIGMA_USERS[LP.Name] then
         sharedRevenge.Value = pl.Name
     end
     
-    -- Update autoequip state after adding target
     updateAutoequipState()
 end
 
 local function removeTarget(pl)
-    if not oldScriptActive then return end -- Don't modify targets if new script is active
+    if not oldScriptActive or not pl or ALWAYS_KILL[pl.Name] then 
+        return false 
+    end
     
-    if not pl or ALWAYS_KILL[pl.Name] then return false end
     targetNames[pl.Name] = nil
     temporaryTargets[pl.Name] = nil
-    -- Remove from targetList
-    for i=#targetList,1,-1 do
+    
+    for i = #targetList, 1, -1 do
         if targetList[i] == pl then
             table.remove(targetList, i)
         end
     end
     
-    -- Update autoequip state after removing target
     updateAutoequipState()
     return true
 end
 
 local function addTemporaryTarget(pl, dur)
-    if not oldScriptActive then return end -- Don't add targets if new script is active
-    
-    if not pl
-    or MAIN_USERS[pl.Name]
-    or SECONDARY_MAIN_USERS[pl.Name]
-    or SIGMA_USERS[pl.Name]
-    or WHITELISTED_USERS[pl.Name] then -- Check whitelist
+    if not oldScriptActive or not pl or 
+       MAIN_USERS[pl.Name] or SECONDARY_MAIN_USERS[pl.Name] or 
+       SIGMA_USERS[pl.Name] or WHITELISTED_USERS[pl.Name] then
         return
     end
+    
     local duration = dur or TEMP_TARGET_DURATION
     temporaryTargets[pl.Name] = os.time() + duration
+    
     if not table.find(targetList, pl) then
         table.insert(targetList, pl)
     end
+    
     if MAIN_USERS[LP.Name] or SIGMA_USERS[LP.Name] then
         if dur == SECONDARY_TARGET_DURATION then
             sharedRevenge.Value = "TEMP_EXT:"..pl.Name
@@ -810,151 +731,115 @@ local function addTemporaryTarget(pl, dur)
         end
     end
     
-    -- Update autoequip state after adding target
     updateAutoequipState()
 end
 
---------------------------------------------------------------------------------
 -- NAME MATCHING
---------------------------------------------------------------------------------
 local function findPlayerByPartialName(partial)
     if not partial or partial == "" then return nil end
+    
     partial = partial:lower()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower() == partial then
-            return p
+    
+    -- Exact match first
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Name:lower() == partial then
+            return player
         end
     end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower():sub(1,#partial) == partial then
-            return p
+    
+    -- Prefix match
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Name:lower():sub(1, #partial) == partial then
+            return player
         end
     end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower():find(partial,1,true) then
-            return p
+    
+    -- Contains match
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Name:lower():find(partial, 1, true) then
+            return player
         end
     end
+    
     return nil
 end
 
---------------------------------------------------------------------------------
--- SERVER HOPPING LOGIC (FIXED)
---------------------------------------------------------------------------------
-function checkAndHopServers()
-    -- Prevent multiple simultaneous hop attempts
-    if isHopping then return end
-    
-    -- Only hop if enabled
-    if not serverHopEnabled then return end
+-- ENHANCED SERVER HOPPING
+local function checkAndHopServers()
+    if isHopping or not serverHopEnabled then return end
     
     local currentPlayers = #Players:GetPlayers()
-    
-    -- Check if we should hop
-    if currentPlayers >= minPlayersRequired then 
-        return 
-    end
+    if currentPlayers >= minPlayersRequired then return end
     
     isHopping = true
     
-    local servers = {}
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
     end)
     
     if not success then 
-        warn("Failed to fetch servers:", result)
         isHopping = false
         return 
     end
     
-    local body
-    pcall(function()
-        body = HttpService:JSONDecode(result)
-    end)
+    local body = pcall(function()
+        return HttpService:JSONDecode(result)
+    end) and HttpService:JSONDecode(result) or nil
     
     if body and body.data then
-        for i, v in next, body.data do
-            if type(v) == "table" and v.id ~= game.JobId then
-                local playing = tonumber(v.playing)
-                local maxPlayers = tonumber(v.maxPlayers)
+        local servers = {}
+        
+        for _, server in pairs(body.data) do
+            if type(server) == "table" and server.id ~= game.JobId then
+                local playing = tonumber(server.playing)
+                local maxPlayers = tonumber(server.maxPlayers)
                 
                 if playing and maxPlayers and playing < maxPlayers then
-                    -- Add ALL available servers
-                    table.insert(servers, {id = v.id, players = playing})
+                    table.insert(servers, {id = server.id, players = playing})
                 end
             end
         end
-    end
-    
-    -- Sort servers by player count (highest first)
-    table.sort(servers, function(a, b) return a.players > b.players end)
-    
-    if #servers > 0 then
-        -- Queue the script to run after teleport
-        if KeepInfYield and queueteleport then
-            pcall(function()
-                queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
-            end)
-        end
         
-        -- Try servers in order from most players to least
-        for idx, server in ipairs(servers) do
-            -- Try to teleport
-            local teleportSuccess = pcall(function()
-                TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LP)
-            end)
-            
-            if teleportSuccess then
-                break -- Exit if teleport initiated successfully
+        table.sort(servers, function(a, b) return a.players > b.players end)
+        
+        if #servers > 0 then
+            if KeepInfYield and queueteleport then
+                pcall(function()
+                    queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+                end)
             end
             
-            -- Try up to 3 servers before giving up this attempt
-            if idx >= 3 then
-                break
+            for idx, server in pairs(servers) do
+                local teleportSuccess = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LP)
+                end)
+                
+                if teleportSuccess then break end
+                if idx >= 3 then break end
             end
-            
-            task.wait(0.5) -- Small delay between attempts
         end
-    else
-        warn("No available servers found")
     end
     
     isHopping = false
 end
 
---------------------------------------------------------------------------------
--- CHAT COMMANDS (MAIN & SIGMA ONLY) - FIXED WITH PROPER ACTIVATE
---------------------------------------------------------------------------------
+-- CHAT COMMANDS
 local function processChatCommand(msg)
-    if msg:sub(1,#CMD_PREFIX) ~= CMD_PREFIX then return end
+    if msg:sub(1, #CMD_PREFIX) ~= CMD_PREFIX then return end
+    
     local parts = {}
-    for w in msg:sub(#CMD_PREFIX+1):gmatch("%S+") do
-        table.insert(parts, w)
+    for word in msg:sub(#CMD_PREFIX + 1):gmatch("%S+") do
+        table.insert(parts, word)
     end
-    local cmd  = parts[1] and parts[1]:lower()
+    
+    local cmd = parts[1] and parts[1]:lower()
     local name = parts[2]
     
-    -- Handle activate command - FIXED
     if cmd == "activate" then
         execute()
         return
     end
     
-    -- Handle tool limiter commands
-    if cmd == "toollimit" then
-        if name == "on" then
-            toolLimiterEnabled = true
-            startToolLimiter()
-            return
-        elseif name == "off" then
-            toolLimiterEnabled = false
-            stopToolLimiter()
-            return
-        end
-    end
-    
-    -- Handle goon commands
     if cmd == "goon" then
         startGoonLoop()
         return
@@ -963,7 +848,6 @@ local function processChatCommand(msg)
         return
     end
     
-    -- Handle spam commands
     if cmd == "sp" then
         startSpamLoop()
         return
@@ -972,48 +856,38 @@ local function processChatCommand(msg)
         return
     end
     
-    -- Handle server hop commands
     if cmd == "hop" then
         if name == "on" then
             serverHopEnabled = true
-            return
         elseif name == "off" then
             serverHopEnabled = false
-            return
         elseif name == "now" then
             checkAndHopServers()
-            return
         end
+        return
     end
     
-    -- Handle line commands - FIXED
     if cmd == "line" then
-        -- Change teleport targets to line formation
-        for name, pos in pairs(lineTargets) do
-            teleportTargets[name] = pos
+        for targetName, pos in pairs(lineTargets) do
+            teleportTargets[targetName] = pos
         end
-        -- Reconnect teleport with new targets
         setupTeleport()
         return
     end
     
     if cmd == "unline" then
-        -- Revert teleport targets back to original
-        for name, pos in pairs(originalTargets) do
-            teleportTargets[name] = pos
+        for targetName, pos in pairs(originalTargets) do
+            teleportTargets[targetName] = pos
         end
-        -- Reconnect teleport with original targets
         setupTeleport()
         return
     end
     
-    -- Handle FPS boost command
     if cmd == "fpsboost" then
         startFPSBoost()
         return
     end
     
-    -- Handle restart command
     if cmd == "restart" then
         local character = LP.Character
         if character then
@@ -1026,16 +900,17 @@ local function processChatCommand(msg)
     end
     
     if not cmd or not name then return end
-    local pl = findPlayerByPartialName(name)
-    if not pl then return end
+    local player = findPlayerByPartialName(name)
+    if not player then return end
 
     if cmd == "loop" then
-        addPermanentTarget(pl)
+        addPermanentTarget(player)
     elseif cmd == "unloop" then
-        removeTarget(pl)
+        removeTarget(player)
     end
 end
 
+-- SETUP CHAT COMMAND HANDLER
 local function setupTextChatCommandHandler()
     pcall(function()
         if TextChatService and TextChatService.MessageReceived then
@@ -1043,17 +918,15 @@ local function setupTextChatCommandHandler()
                 local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                 if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
                     local messageText = txtMsg.Text
-                    -- Process all commands through the main handler
                     processChatCommand(messageText)
                     
-                    -- Handle update separately
                     if messageText == ".update" then
                         sharedRevenge.Value = "UPDATE"
                     end
                 end
             end)
         else
-            local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents",10)
+            local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 10)
             if events then
                 local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
                 if msgEvent then
@@ -1061,10 +934,8 @@ local function setupTextChatCommandHandler()
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             local messageText = data.Message
-                            -- Process all commands through the main handler
                             processChatCommand(messageText)
                             
-                            -- Handle update separately
                             if messageText == ".update" then
                                 sharedRevenge.Value = "UPDATE"
                             end
@@ -1076,9 +947,7 @@ local function setupTextChatCommandHandler()
     end)
 end
 
---------------------------------------------------------------------------------
--- SHARED_REVENGE LISTENER (INCLUDES UPDATE)
---------------------------------------------------------------------------------
+-- SHARED REVENGE LISTENER
 sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
     local val = sharedRevenge.Value
 
@@ -1093,41 +962,38 @@ sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
         return
     end
 
-    -- Only process revenge targets if old script is active
     if not oldScriptActive then return end
 
-    if val:sub(1,9) == "TEMP_EXT:" then
+    if val:sub(1, 9) == "TEMP_EXT:" then
         local name = val:sub(10)
-        local p    = Players:FindFirstChild(name)
-        if p then addTemporaryTarget(p, SECONDARY_TARGET_DURATION) end
-    elseif val:sub(1,5) == "TEMP:" then
+        local player = Players:FindFirstChild(name)
+        if player then addTemporaryTarget(player, SECONDARY_TARGET_DURATION) end
+    elseif val:sub(1, 5) == "TEMP:" then
         local name = val:sub(6)
-        local p    = Players:FindFirstChild(name)
-        if p then addTemporaryTarget(p) end
+        local player = Players:FindFirstChild(name)
+        if player then addTemporaryTarget(player) end
     else
-        local p = Players:FindFirstChild(val)
-        if p then addPermanentTarget(p) end
+        local player = Players:FindFirstChild(val)
+        if player then addPermanentTarget(player) end
     end
 end)
 
---------------------------------------------------------------------------------
--- CLEANUP TEMP TARGETS - FIXED
---------------------------------------------------------------------------------
+-- CLEANUP TEMP TARGETS
 task.spawn(function()
     while true do
-        if oldScriptActive then -- Only clean up if old script is active
+        if oldScriptActive then
             local now = os.time()
             local targetsRemoved = false
             
-            for name, exp in pairs(temporaryTargets) do
-                if exp <= now then
+            for name, expiration in pairs(temporaryTargets) do
+                if expiration <= now then
                     temporaryTargets[name] = nil
-                    -- Only remove from targetList if not a permanent target
+                    
                     if not targetNames[name] then
-                        local p = Players:FindFirstChild(name)
-                        if p then 
-                            for i=#targetList,1,-1 do
-                                if targetList[i] == p then
+                        local player = Players:FindFirstChild(name)
+                        if player then 
+                            for i = #targetList, 1, -1 do
+                                if targetList[i] == player then
                                     table.remove(targetList, i)
                                     targetsRemoved = true
                                 end
@@ -1137,7 +1003,6 @@ task.spawn(function()
                 end
             end
             
-            -- Update autoequip state if targets were removed
             if targetsRemoved then
                 updateAutoequipState()
             end
@@ -1146,459 +1011,424 @@ task.spawn(function()
     end
 end)
 
---------------------------------------------------------------------------------
--- TOOL COUNT DETECTION
---------------------------------------------------------------------------------
-local function checkPlayerToolCount(pl)
-    if not oldScriptActive then return end -- Don't check if new script is active
-    
-    if   MAIN_USERS[pl.Name]
-     or SECONDARY_MAIN_USERS[pl.Name]
-     or SIGMA_USERS[pl.Name]
-     or WHITELISTED_USERS[pl.Name] -- Check whitelist
-     or targetNames[pl.Name]
-     or ALWAYS_KILL[pl.Name] then
+-- ENHANCED TOOL COUNT DETECTION
+local function checkPlayerToolCount(player)
+    if not oldScriptActive or not player or
+       MAIN_USERS[player.Name] or SECONDARY_MAIN_USERS[player.Name] or 
+       SIGMA_USERS[player.Name] or WHITELISTED_USERS[player.Name] or 
+       targetNames[player.Name] or ALWAYS_KILL[player.Name] then
         return
     end
+    
     local count = 0
-    local bp = pl:FindFirstChildOfClass("Backpack")
-    if bp then for _, itm in ipairs(bp:GetChildren()) do
-        if itm:IsA("Tool") then count += 1 end
-    end end
-    if pl.Character then for _, itm in ipairs(pl.Character:GetChildren()) do
-        if itm:IsA("Tool") then count += 1 end
-    end end
-    if count >= TOOL_COUNT_THRESHOLD then
-        addPermanentTarget(pl)
-    end
-end
-
-task.spawn(function()
-    while true do
-        if oldScriptActive then -- Only check if old script is active
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= LP then checkPlayerToolCount(p) end
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    local character = player.Character
+    
+    if backpack then
+        for _, item in pairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                count = count + 1
             end
         end
-        task.wait(5)
     end
-end)
+    
+    if character then
+        for _, item in pairs(character:GetChildren()) do
+            if item:IsA("Tool") then
+                count = count + 1
+            end
+        end
+    end
+    
+    if count >= TOOL_COUNT_THRESHOLD then
+        addPermanentTarget(player)
+    end
+end
 
+-- BOX REACH CREATION
 local function CreateBoxReach(tool)
     if not tool or not tool:IsA("Tool") then return end
-    local h = tool:FindFirstChild("Handle")
-    if not h or h:FindFirstChild("BoxReachPart") then return end
-    local p = Instance.new("Part")
-    p.Name         = "BoxReachPart"
-    p.Size         = Vector3.new(15,15,15)
-    p.Transparency = 1
-    p.CanCollide   = false
-    p.Massless     = true
-    p.Anchored     = false
-    p.Parent       = h
-    local w = Instance.new("WeldConstraint", p)
-    w.Part0, w.Part1 = h, p
+    
+    local handle = tool:FindFirstChild("Handle")
+    if not handle or handle:FindFirstChild("BoxReachPart") then return end
+    
+    local part = Instance.new("Part")
+    part.Name = "BoxReachPart"
+    part.Size = Vector3.new(20, 20, 20) -- Increased from 15 to 20
+    part.Transparency = 1
+    part.CanCollide = false
+    part.Massless = true
+    part.Anchored = false
+    part.Parent = handle
+    
+    local weld = Instance.new("WeldConstraint", part)
+    weld.Part0, weld.Part1 = handle, part
 end
 
---------------------------------------------------------------------------------
--- DAMAGE & KILLLOOP
---------------------------------------------------------------------------------
--- Check if firetouchinterest exists before using it
-local firetouchinterest = firetouchinterest
-if not firetouchinterest then
-    -- Fallback function if firetouchinterest doesn't exist
-    firetouchinterest = function(a, b, state)
-        -- This won't do anything but prevents the error
-        warn("firetouchinterest not available")
-    end
+-- ENHANCED DAMAGE SYSTEM
+local firetouchinterest = firetouchinterest or function(a, b, state)
+    -- Fallback if not available
 end
 
-local function FT(a,b)
-    for _=1,FT_TIMES do
+local function FT(part1, part2)
+    for i = 1, FT_TIMES do
         pcall(function()
-            firetouchinterest(a,b,0)
-            firetouchinterest(a,b,1)
+            firetouchinterest(part1, part2, 0)
+            firetouchinterest(part1, part2, 1)
         end)
     end
 end
 
-local function MH(toolPart, pl)
-    local c = pl.Character if not c then return end
-    local h = c:FindFirstChildOfClass("Humanoid")
-    local r = c:FindFirstChild("HumanoidRootPart")
-    if not (h and r and h.Health>0) then return end
-    pcall(function() toolPart.Parent:Activate() end)
-    for _=1,DMG_TIMES do
-        for _, v in ipairs(c:GetDescendants()) do
-            if v:IsA("BasePart") then FT(toolPart,v) end
+local function MH(toolPart, player)
+    local character = player.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    
+    if not (humanoid and rootPart and humanoid.Health > 0) then return end
+    
+    pcall(function() 
+        toolPart.Parent:Activate() 
+    end)
+    
+    for i = 1, DMG_TIMES do
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                FT(toolPart, part)
+            end
         end
     end
 end
 
+-- ENHANCED HEARTBEAT FUNCTION
 local function HB()
-    if not oldScriptActive then return end -- Don't attack if new script is active
+    if not oldScriptActive then return end
     
-    -- Only try to equip if autoequip is enabled (when we have targets)
     if autoequipEnabled then
         fastForceEquip()
     end
     
-    local c = LP.Character if not c then return end
-    local tool = c:FindFirstChildWhichIsA("Tool") if not tool then return end
+    local character = LP.Character
+    if not character then return end
+    
+    local tool = character:FindFirstChildWhichIsA("Tool")
+    if not tool then return end
+    
     CreateBoxReach(tool)
     local reach = tool:FindFirstChild("BoxReachPart") or tool:FindFirstChild("Handle")
     if not reach then return end
 
-    for i=#targetList,1,-1 do
-        local p = targetList[i]
-        if p and p.Parent then  -- Check if player still exists in game
-            if p.Character then
-                local h = p.Character:FindFirstChildOfClass("Humanoid")
-                local r = p.Character:FindFirstChild("HumanoidRootPart")
-                if h and r and h.Health>0 then
-                    MH(reach,p)
-                end
+    for _, player in pairs(targetList) do
+        if player and player.Parent and player.Character then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            
+            if humanoid and rootPart and humanoid.Health > 0 then
+                MH(reach, player)
             end
         end
-        -- Don't remove from list - let it stay for persistence
     end
 end
 
---------------------------------------------------------------------------------
--- FALL PREVENTION (ALWAYS ACTIVE FOR ALL USERS)
---------------------------------------------------------------------------------
--- Setup teleport for the local player
-setupTeleport()
-
--- Start the tool limiter system
-startToolLimiter()
-
---------------------------------------------------------------------------------
--- SECONDARY USER KILLTRACKER & LOGGER
---------------------------------------------------------------------------------
+-- KILL TRACKER INITIALIZATION
 local function initializeKillCounter()
-    for _, p in ipairs(Players:GetPlayers()) do
-        killTracker[p.Name] = {kills={}, lastRespawn=0}
+    for _, player in pairs(Players:GetPlayers()) do
+        killTracker[player.Name] = {kills = {}, lastRespawn = 0}
     end
 end
 
-local function handleSecondaryUserKilled(killerName,victimName)
-    if not oldScriptActive then return end -- Don't track if new script is active
+-- SECONDARY USER KILL HANDLING
+local function handleSecondaryUserKilled(killerName, victimName)
+    if not oldScriptActive or victimName ~= "a§sidaosidhsa" then return end
     
-    if victimName ~= "a§sidaosidhsa" then return end
-    if MAIN_USERS[killerName]
-    or SECONDARY_MAIN_USERS[killerName]
-    or SIGMA_USERS[killerName]
-    or WHITELISTED_USERS[killerName] then -- Check whitelist
+    if MAIN_USERS[killerName] or SECONDARY_MAIN_USERS[killerName] or 
+       SIGMA_USERS[killerName] or WHITELISTED_USERS[killerName] then
         return
     end
+    
     local now = os.time()
-    local rec = killTracker[killerName] or {kills={}, lastRespawn=0}
-    table.insert(rec.kills, now)
-    while #rec.kills>3 do table.remove(rec.kills,1) end
-    killTracker[killerName] = rec
-    if #rec.kills==3 and rec.kills[3]-rec.kills[1]<=15 then
-        local kp = Players:FindFirstChild(killerName)
-        if kp then addTemporaryTarget(kp,SECONDARY_TARGET_DURATION); rec.kills={} end
+    local record = killTracker[killerName] or {kills = {}, lastRespawn = 0}
+    table.insert(record.kills, now)
+    
+    while #record.kills > 3 do 
+        table.remove(record.kills, 1) 
+    end
+    
+    killTracker[killerName] = record
+    
+    if #record.kills == 3 and record.kills[3] - record.kills[1] <= 15 then
+        local killer = Players:FindFirstChild(killerName)
+        if killer then 
+            addTemporaryTarget(killer, SECONDARY_TARGET_DURATION)
+            record.kills = {}
+        end
     end
 end
 
+-- KILL LOGGER SETUP
 local function SetupKillLogger()
     pcall(function()
-        local evt = ReplicatedStorage:FindFirstChild("APlayerWasKilled")
-        if not evt then return end
-        evt.OnClientEvent:Connect(function(killerName,victimName,authCode)
-            if authCode~="Anrt4tiEx354xpl5oitzs" then return end
+        local event = ReplicatedStorage:FindFirstChild("APlayerWasKilled")
+        if not event then return end
+        
+        event.OnClientEvent:Connect(function(killerName, victimName, authCode)
+            if authCode ~= "Anrt4tiEx354xpl5oitzs" then return end
+            
             if SECONDARY_MAIN_USERS[victimName] then
-                handleSecondaryUserKilled(killerName,victimName)
+                handleSecondaryUserKilled(killerName, victimName)
             end
-            if killerName
-            and not MAIN_USERS[killerName]
-            and not SECONDARY_MAIN_USERS[killerName]
-            and not SIGMA_USERS[killerName]
-            and not WHITELISTED_USERS[killerName] then -- Check whitelist
-                local kp=Players:FindFirstChild(killerName)
-                if MAIN_USERS[victimName] or victimName==LP.Name then
-                    -- CHANGED: Use permanent target for main users being killed
-                    addPermanentTarget(kp)
+            
+            if killerName and not MAIN_USERS[killerName] and 
+               not SECONDARY_MAIN_USERS[killerName] and not SIGMA_USERS[killerName] and 
+               not WHITELISTED_USERS[killerName] then
+                
+                local killer = Players:FindFirstChild(killerName)
+                if MAIN_USERS[victimName] or victimName == LP.Name then
+                    addPermanentTarget(killer)
                 end
             end
         end)
     end)
 end
 
---------------------------------------------------------------------------------
 -- DAMAGE TRACKER (BACKUP)
---------------------------------------------------------------------------------
 local pendingDamager = nil
+
 local function SetupDamageTracker(humanoid)
-    if not oldScriptActive then return end -- Don't track if new script is active
+    if not oldScriptActive then return end
     
     humanoid.HealthChanged:Connect(function()
-        if not oldScriptActive then return end
-        if not LP.Character then return end
+        if not oldScriptActive or not LP.Character then return end
+        
         local counts = {}
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p~=LP
-            and p.Character
-            and not MAIN_USERS[p.Name]
-            and not SECONDARY_MAIN_USERS[p.Name]
-            and not SIGMA_USERS[p.Name]
-            and not WHITELISTED_USERS[p.Name] then -- Check whitelist
-                local t = p.Character:FindFirstChildWhichIsA("Tool")
-                if t and t.Name:lower():find("sword") then
-                    local dist = (LP.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                    if dist<=25 then counts[p]=(counts[p] or 0)+1 end
+        
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LP and player.Character and
+               not MAIN_USERS[player.Name] and not SECONDARY_MAIN_USERS[player.Name] and
+               not SIGMA_USERS[player.Name] and not WHITELISTED_USERS[player.Name] then
+                
+                local tool = player.Character:FindFirstChildWhichIsA("Tool")
+                if tool and tool.Name:lower():find("sword") then
+                    local distance = (LP.Character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                    if distance <= 30 then -- Increased from 25 to 30
+                        counts[player] = (counts[player] or 0) + 1
+                    end
                 end
             end
         end
-        local best,top = nil,0
-        for p,c in pairs(counts) do if c>top then best,top = p,c end end
-        pendingDamager = best
+        
+        local bestPlayer, topCount = nil, 0
+        for player, count in pairs(counts) do
+            if count > topCount then
+                bestPlayer, topCount = player, count
+            end
+        end
+        
+        pendingDamager = bestPlayer
     end)
+    
     humanoid.Died:Connect(function()
         if not oldScriptActive then return end
-        if pendingDamager
-        and not MAIN_USERS[pendingDamager.Name]
-        and not SECONDARY_MAIN_USERS[pendingDamager.Name]
-        and not SIGMA_USERS[pendingDamager.Name]
-        and not WHITELISTED_USERS[pendingDamager.Name] then -- Check whitelist
-            -- CHANGED: Use permanent target for main users being killed
+        
+        if pendingDamager and not MAIN_USERS[pendingDamager.Name] and
+           not SECONDARY_MAIN_USERS[pendingDamager.Name] and not SIGMA_USERS[pendingDamager.Name] and
+           not WHITELISTED_USERS[pendingDamager.Name] then
             addPermanentTarget(pendingDamager)
         end
+        
         pendingDamager = nil
     end)
 end
 
---------------------------------------------------------------------------------
--- CHARACTER SETUP
---------------------------------------------------------------------------------
-local function SetupChar(c)
+-- ENHANCED CHARACTER SETUP
+local function SetupChar(character)
     pcall(function()
-        c:WaitForChild("HumanoidRootPart",10)
-        local h = c:FindFirstChildOfClass("Humanoid")
-        if not h then return end
+        character:WaitForChild("HumanoidRootPart", 10)
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+        
         if SECONDARY_MAIN_USERS[LP.Name] and killTracker[LP.Name] then
             killTracker[LP.Name].lastRespawn = os.time()
         end
         
-        -- Setup teleport immediately for main users (ALWAYS ACTIVE)
         setupTeleport()
-        
-        -- Update autoequip state on character spawn
         updateAutoequipState()
         
-        -- Auto-activate after character loads (if enabled)
         if autoactivate and not isActivated then
             task.spawn(function()
-                task.wait(1) -- Wait 1 second after character loads
-                execute()
+                execute() -- Removed delay for faster activation
             end)
         end
         
-        -- Setup character connections for autoequip management
-        autoequipConnections[6] = c.ChildRemoved:Connect(function(child)
+        autoequipConnections[6] = character.ChildRemoved:Connect(function(child)
             if child.Name == "Sword" and child:IsA("Tool") and autoequipEnabled then
                 fastForceEquip()
             end
         end)
         
-        for _, t in ipairs(c:GetChildren()) do
-            if t:IsA("Tool") then CreateBoxReach(t) end
+        for _, tool in pairs(character:GetChildren()) do
+            if tool:IsA("Tool") then
+                CreateBoxReach(tool)
+            end
         end
         
-        -- Only setup killloop if old script is active
         if oldScriptActive then
             if CN then CN:Disconnect() end
             CN = RunService.Heartbeat:Connect(HB)
-            SetupDamageTracker(h)
+            SetupDamageTracker(humanoid)
         end
     end)
 end
 
--- Improved character event handling
-LP.CharacterAdded:Connect(function(char)
-    -- Stop goon loop on respawn to prevent conflicts
+-- CHARACTER EVENT HANDLING
+LP.CharacterAdded:Connect(function(character)
     stopGoonLoop()
     
     pcall(function()
-        char:WaitForChild("Humanoid")
-        char:WaitForChild("HumanoidRootPart") -- protection against loading lag
+        character:WaitForChild("Humanoid")
+        character:WaitForChild("HumanoidRootPart")
         
-        -- Don't auto-equip on spawn - let the smart system handle it
-        -- Based on whether we have targets or not
-        
-        -- Connect humanoid died event to stop goon loop
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid.Died:Connect(function()
                 stopGoonLoop()
             end)
         end
         
-        -- Setup character
-        SetupChar(char)
+        SetupChar(character)
     end)
 end)
 
--- Server hop monitoring task (FIXED)
+-- SERVER HOP MONITORING
 task.spawn(function()
-    task.wait(10) -- Wait 10 seconds after joining before first check
+    task.wait(5) -- Reduced from 10 to 5 seconds
     
     while true do
         if serverHopEnabled then
             local currentPlayers = #Players:GetPlayers()
             
-            -- If below minimum players, check every 5 seconds
             if currentPlayers < minPlayersRequired then
                 checkAndHopServers()
-                task.wait(hopAttemptInterval) -- 5 seconds
+                task.wait(hopAttemptInterval)
             else
-                -- If we have enough players, check less frequently
-                task.wait(30)
+                task.wait(20) -- Reduced from 30 to 20 seconds
             end
         else
-            task.wait(30) -- Check every 30 seconds when disabled
+            task.wait(20)
         end
     end
 end)
 
---------------------------------------------------------------------------------
--- INITIALIZATION
---------------------------------------------------------------------------------
-initializeKillCounter()
-setupTextChatCommandHandler()
-SetupKillLogger()
-
-if LP.Character then SetupChar(LP.Character) end
-LP.CharacterAdded:Connect(SetupChar)
-
--- Add existing players that should be targeted
-if oldScriptActive then
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if ALWAYS_KILL[pl.Name] then
-            addPermanentTarget(pl)
+-- TOOL COUNT MONITORING
+task.spawn(function()
+    while true do
+        if oldScriptActive then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LP then
+                    checkPlayerToolCount(player)
+                end
+            end
         end
-        checkPlayerToolCount(pl)
+        task.wait(3) -- Reduced from 5 to 3 seconds
     end
-end
+end)
 
--- FIXED: Check for persistent targets when players join
-Players.PlayerAdded:Connect(function(pl)
-    killTracker[pl.Name] = {kills={}, lastRespawn=0}
+-- AUTOEQUIP STATE MONITORING
+task.spawn(function()
+    while true do
+        if oldScriptActive then
+            updateAutoequipState()
+        end
+        task.wait(0.1) -- Very frequent updates for responsiveness
+    end
+end)
+
+-- PLAYER EVENT HANDLERS
+Players.PlayerAdded:Connect(function(player)
+    killTracker[player.Name] = {kills = {}, lastRespawn = 0}
     
     if oldScriptActive then
-        -- If this player was a target before, re-add them
-        if targetNames[pl.Name] or temporaryTargets[pl.Name] then
-            if not table.find(targetList, pl) then
-                table.insert(targetList, pl)
+        if targetNames[player.Name] or temporaryTargets[player.Name] then
+            if not table.find(targetList, player) then
+                table.insert(targetList, player)
             end
-            -- Update autoequip state after adding target
             updateAutoequipState()
-        elseif ALWAYS_KILL[pl.Name] then
-            addPermanentTarget(pl)
+        elseif ALWAYS_KILL[player.Name] then
+            addPermanentTarget(player)
         end
         
-        -- Delayed tool count check
         task.spawn(function()
-            task.wait(5)
-            if pl and pl.Parent then
-                checkPlayerToolCount(pl)
+            task.wait(3) -- Reduced from 5 to 3 seconds
+            if player and player.Parent then
+                checkPlayerToolCount(player)
             end
         end)
     end
+    
+    -- Enhanced tool limiter for new players
+    if player ~= LP then
+        player.CharacterAdded:Connect(function(character)
+            task.spawn(function()
+                task.wait(1) -- Reduced delay
+                destroyExcessTools(player)
+            end)
+        end)
+        
+        local backpack = player:WaitForChild("Backpack", 10)
+        if backpack then
+            backpack.ChildAdded:Connect(function(child)
+                if child:IsA("Tool") then
+                    task.spawn(function()
+                        destroyExcessTools(player)
+                    end)
+                end
+            end)
+        end
+    end
 end)
 
--- FIXED: Clean up targets when players leave and update autoequip state
-Players.PlayerRemoving:Connect(function(pl)
-    if killTracker[pl.Name] then
-        killTracker[pl.Name] = nil
-    end
+Players.PlayerRemoving:Connect(function(player)
+    killTracker[player.Name] = nil
     
-    -- Remove from targetList when player leaves (but keep in targetNames/temporaryTargets for persistence)
-    for i=#targetList,1,-1 do
-        if targetList[i] == pl then
+    for i = #targetList, 1, -1 do
+        if targetList[i] == player then
             table.remove(targetList, i)
         end
     end
     
-    -- Update autoequip state after player leaves
     updateAutoequipState()
 end)
 
--- Handle new players joining for tool limiting
-Players.PlayerAdded:Connect(function(player)
-    if player ~= LP and toolLimiterEnabled then
-        -- Monitor this player's tools
-        player.CharacterAdded:Connect(function(character)
-            task.spawn(function()
-                task.wait(2) -- Wait a moment for tools to load
-                destroyExcessTools(player)
-            end)
-        end)
-        
-        -- Monitor backpack changes
-        local backpack = player:WaitForChild("Backpack", 10)
-        if backpack then
-            backpack.ChildAdded:Connect(function(child)
-                if child:IsA("Tool") and toolLimiterEnabled then
-                    task.spawn(function()
-                        task.wait(0.1) -- Small delay to prevent rapid firing
-                        destroyExcessTools(player)
-                    end)
-                end
-            end)
-        end
-    end
-end)
+-- PLACE ID CHECK
+if game.PlaceId ~= 6110766473 then return end
 
--- Monitor existing players for tool limiting
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LP and toolLimiterEnabled then
-        -- Monitor this player's tools
-        if player.Character then
-            task.spawn(function()
-                task.wait(2)
-                destroyExcessTools(player)
-            end)
+-- INITIALIZATION
+setupAntiAFK()
+hideUI()
+optimizeGraphics()
+setupAntiFling()
+startToolLimiter()
+initializeKillCounter()
+setupTextChatCommandHandler()
+SetupKillLogger()
+
+-- Setup character if already exists
+if LP.Character then 
+    SetupChar(LP.Character) 
+end
+
+-- Add existing ALWAYS_KILL targets
+if oldScriptActive then
+    for _, player in pairs(Players:GetPlayers()) do
+        if ALWAYS_KILL[player.Name] then
+            addPermanentTarget(player)
         end
-        
-        player.CharacterAdded:Connect(function(character)
-            task.spawn(function()
-                task.wait(2)
-                destroyExcessTools(player)
-            end)
-        end)
-        
-        -- Monitor backpack changes
-        local backpack = player:FindFirstChildOfClass("Backpack")
-        if backpack then
-            backpack.ChildAdded:Connect(function(child)
-                if child:IsA("Tool") and toolLimiterEnabled then
-                    task.spawn(function()
-                        task.wait(0.1)
-                        destroyExcessTools(player)
-                    end)
-                end
-            end)
-        else
-            player.ChildAdded:Connect(function(child)
-                if child.Name == "Backpack" then
-                    child.ChildAdded:Connect(function(item)
-                        if item:IsA("Tool") and toolLimiterEnabled then
-                            task.spawn(function()
-                                task.wait(0.1)
-                                destroyExcessTools(player)
-                            end)
-                        end
-                    end)
-                end
-            end)
-        end
+        checkPlayerToolCount(player)
     end
 end
 
--- Initialize autoequip state based on current targets
+-- Initialize autoequip state
 updateAutoequipState()
 
-print("thel222ight")
+print("Enhanced script loaded - optimized and faster")
