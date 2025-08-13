@@ -119,6 +119,10 @@ local ALWAYS_KILL = {
     ["FlexFightSecurity015"] = true,
     ["nechmelol2"] = true,
     ["Latticeon"] = true,
+    ["playleeer014"] = true,
+    ["cokoladova_zmrzlinkq"] = true,
+    ["anticurak"] = true,
+    ["SpicyDealldo"] = true,
 }
 
 local WHITELISTED_USERS = {
