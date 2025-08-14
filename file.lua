@@ -46,6 +46,16 @@ local lineTargets = {
     ["Cubot_Nova1"]     = CFrame.new(4, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
 }
 
+-- USER NUMBER MAPPING FOR SERVERHOP
+local userNumbers = {
+    ["Cubot_Nova3"] = 1,
+    ["Cub0t_01"] = 2,
+    ["cubot_nova4"] = 3,
+    ["cubot_autoIoop"] = 4,
+    ["Cubot_Nova2"] = 5,
+    ["Cubot_Nova1"] = 6,
+}
+
 -- CONFIGURATION
 local autoactivate = false
 local serverHopEnabled = true
@@ -802,12 +812,9 @@ local function findPlayerByPartialName(partial)
     return nil
 end
 
--- ENHANCED SERVER HOPPING
-local function checkAndHopServers()
-    if isHopping or not serverHopEnabled then return end
-    
-    local currentPlayers = #Players:GetPlayers()
-    if currentPlayers >= minPlayersRequired then return end
+-- ENHANCED SERVER HOPPING FUNCTIONS
+local function forceServerHop()
+    if isHopping then return end
     
     isHopping = true
     
@@ -861,8 +868,17 @@ local function checkAndHopServers()
     isHopping = false
 end
 
+local function checkAndHopServers()
+    if isHopping or not serverHopEnabled then return end
+    
+    local currentPlayers = #Players:GetPlayers()
+    if currentPlayers >= minPlayersRequired then return end
+    
+    forceServerHop()
+end
+
 -- ENHANCED CHAT COMMANDS
-local function processChatCommand(msg)
+local function processChatCommand(msg, sender)
     if msg:sub(1, #CMD_PREFIX) ~= CMD_PREFIX then return end
     
     local parts = {}
@@ -871,7 +887,7 @@ local function processChatCommand(msg)
     end
     
     local cmd = parts[1] and parts[1]:lower()
-    local name = parts[2] and parts[2]:lower()
+    local param = parts[2]
     
     if cmd == "activate" then
         execute()
@@ -895,12 +911,28 @@ local function processChatCommand(msg)
     end
     
     if cmd == "hop" then
-        if name == "on" then
+        if param == "on" then
             serverHopEnabled = true
-        elseif name == "off" then
+        elseif param == "off" then
             serverHopEnabled = false
-        elseif name == "now" then
+        elseif param == "now" then
             checkAndHopServers()
+        end
+        return
+    end
+    
+    -- NEW SERVERHOP COMMAND - Direct chat detection
+    if cmd == "serverhop" then
+        if not param then
+            -- .serverhop without parameters - hop all users running the script
+            forceServerHop()
+        else
+            -- .serverhop with number - hop specific user
+            local userNum = tonumber(param)
+            if userNum and userNumbers[LP.Name] == userNum then
+                -- This user matches the specified number, so they should hop
+                forceServerHop()
+            end
         end
         return
     end
@@ -938,14 +970,14 @@ local function processChatCommand(msg)
     end
     
     -- Handle .unloop all command (separate from player search)
-    if cmd == "unloop" and name == "all" then
+    if cmd == "unloop" and param == "all" then
         local removedCount = removeAllTargetsExceptAlwaysKill()
         print("Removed " .. removedCount .. " targets (keeping ALWAYS_KILL players)")
         return
     end
     
     -- Regular player-specific commands
-    if not cmd or not name then return end
+    if not cmd or not param then return end
     local player = findPlayerByPartialName(parts[2]) -- Use original case for player search
     if not player then return end
 
@@ -966,7 +998,7 @@ local function setupTextChatCommandHandler()
                     local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                     if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
                         local messageText = txtMsg.Text
-                        processChatCommand(messageText)
+                        processChatCommand(messageText, sender)
                         
                         if messageText == ".update" then
                             sharedRevenge.Value = "UPDATE"
@@ -983,7 +1015,7 @@ local function setupTextChatCommandHandler()
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             local messageText = data.Message
-                            processChatCommand(messageText)
+                            processChatCommand(messageText, speaker)
                             
                             if messageText == ".update" then
                                 sharedRevenge.Value = "UPDATE"
@@ -1480,4 +1512,4 @@ end
 -- Initialize autoequip state
 updateAutoequipState()
 
-print("Enhanced script loaded - optimized and faster with .unloop all command")
+print("Enhanced script loaded - optimized and faster with .unloop all and .serverhop commands")
