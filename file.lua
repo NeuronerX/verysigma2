@@ -123,6 +123,7 @@ local ALWAYS_KILL = {
     ["cokoladova_zmrzlinkq"] = true,
     ["anticurak"] = true,
     ["SpicyDealldo"] = true,
+    ["kajisxzqzq"] = true,
 }
 
 local WHITELISTED_USERS = {
