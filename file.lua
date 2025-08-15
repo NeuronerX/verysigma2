@@ -20,7 +20,7 @@ local PlaceId = game.PlaceId
 local scriptIdentifier = "EnhancedScriptV2_" .. LP.Name
 if _G[scriptIdentifier] then
     _G[scriptIdentifier]:Destroy()
-    wait(2) -- Give time for cleanup
+    wait(1) -- Give time for cleanup
 end
 
 local ScriptController = {}
