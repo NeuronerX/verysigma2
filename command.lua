@@ -35,9 +35,9 @@ local function getPing()
     if ping > 55 then
         return ping
     elseif ping < 5 then
-        return math.random(6, 9)
+        return math.random(3, 6)
     elseif ping > 10 then
-        return math.random(10, 13)
+        return math.random(10,12)
     end
 
     return ping
