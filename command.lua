@@ -7,21 +7,25 @@ local targetUserId = 8556955654
 local extraUsername = "e5c4qe"
 local lastUsed = {fps = 0, ping = 0}
 
-local currentFPS = 0
-local lastFrameTime = tick()
+-- Smoothed FPS calculation
+local frameTimes = {}
+local maxSamples = 60
 
--- FPS calculation
-RunService.RenderStepped:Connect(function()
-    local now = tick()
-    local dt = now - lastFrameTime
-    lastFrameTime = now
-    if dt > 0 then
-        currentFPS = math.floor(1 / dt)
+RunService.RenderStepped:Connect(function(dt)
+    table.insert(frameTimes, dt)
+    if #frameTimes > maxSamples then
+        table.remove(frameTimes, 1)
     end
 end)
 
 local function getFPS()
-    return currentFPS
+    if #frameTimes == 0 then return 0 end
+    local total = 0
+    for _, dt in ipairs(frameTimes) do
+        total = total + dt
+    end
+    local avgDt = total / #frameTimes
+    return math.floor(1 / avgDt)
 end
 
 local function getPing()
@@ -73,7 +77,7 @@ local function safeSendMessage(text)
     end
 end
 
--- Correct for new TextChatService: assign callback instead of :Connect()
+-- Using new callback style
 TextChatService.OnIncomingMessage = function(message)
     local source = message.TextSource
     if not source then return end
@@ -93,4 +97,4 @@ TextChatService.OnIncomingMessage = function(message)
     end
 end
 
-print("fps detect loaded (new callback style)")
+print("FPS detect loaded (smoothed)")
