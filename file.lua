@@ -297,14 +297,16 @@ local function setupTeleport()
     local cf = teleportTargets[LP.Name]
     if cf then
         teleportConnection = RunService.Heartbeat:Connect(function()
-            local character = LP.Character
-            if character then
-                local rootPart = character:FindFirstChild("HumanoidRootPart")
-                if rootPart then
-                    rootPart.CFrame = cf
-                    rootPart.AssemblyLinearVelocity = Vector3.zero
+            pcall(function()
+                local character = LP.Character
+                if character then
+                    local rootPart = character:FindFirstChild("HumanoidRootPart")
+                    if rootPart then
+                        rootPart.CFrame = cf
+                        rootPart.AssemblyLinearVelocity = Vector3.zero
+                    end
                 end
-            end
+            end)
         end)
     end
 end
@@ -1090,16 +1092,32 @@ local function processChatCommand(msg, sender)
     end
     
     if cmd == "line" then
+        -- Update teleport targets to line positions
         for targetName, pos in pairs(lineTargets) do
-            teleportTargets[targetName] = pos
+            if teleportTargets[targetName] then
+                teleportTargets[targetName] = pos
+            end
+        end
+        -- Restart teleport with new positions
+        if teleportConnection then
+            teleportConnection:Disconnect()
+            teleportConnection = nil
         end
         setupTeleport()
         return
     end
     
     if cmd == "unline" then
+        -- Restore original teleport positions
         for targetName, pos in pairs(originalTargets) do
-            teleportTargets[targetName] = pos
+            if teleportTargets[targetName] then
+                teleportTargets[targetName] = pos
+            end
+        end
+        -- Restart teleport with original positions
+        if teleportConnection then
+            teleportConnection:Disconnect()
+            teleportConnection = nil
         end
         setupTeleport()
         return
@@ -1523,7 +1541,10 @@ local function SetupChar(character)
         
         if oldScriptActive then
             if CN then CN:Disconnect() end
-            CN = RunService.Heartbeat:Connect(HB)
+            -- Start the heartbeat connection for targeting
+            CN = RunService.Heartbeat:Connect(function()
+                pcall(HB) -- Call HB function safely
+            end)
             SetupDamageTracker(humanoid)
         end
     end)
