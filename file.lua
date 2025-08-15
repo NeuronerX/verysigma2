@@ -203,6 +203,7 @@ local ALWAYS_KILL = {
     ["kajisxzqzq"] = true,
     ["name12name11"] = true,
     ["joker929280"] = true,
+    ["matej1234575"] = true,
 }
 
 local WHITELISTED_USERS = {
