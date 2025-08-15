@@ -78,9 +78,9 @@ local originalTargets = {
 
 -- Line formation positions (facing backward - 180 degrees turned)
 local lineTargets = {
-    ["Cubot_Nova3"]     = CFrame.new(-31, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cub0t_01"]        = CFrame.new(-23, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_nova4"]     = CFrame.new(-15, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova3"]     = CFrame.new(-15, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cub0t_01"]        = CFrame.new(0, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_nova4"]     = CFrame.new(15, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
     ["cubot_autoIoop"]  = CFrame.new(-7, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
     ["Cubot_Nova2"]     = CFrame.new(-3, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
     ["Cubot_Nova1"]     = CFrame.new(4, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
