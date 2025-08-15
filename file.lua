@@ -8,43 +8,69 @@ local HttpService = game:GetService("HttpService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Load external command script
-pcall(function()
-    loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
-end)
-
+-- ENHANCED SCRIPT DUPLICATION PREVENTION
 local LP = Players.LocalPlayer
-local PlaceId = game.PlaceId
+local scriptIdentifier = "EnhancedScriptV3_" .. LP.Name .. "_" .. game.JobId
 
--- PREVENT SCRIPT DUPLICATION
-local scriptIdentifier = "EnhancedScriptV2_" .. LP.Name
-if _G[scriptIdentifier] then
-    _G[scriptIdentifier]:Destroy()
-    wait(1) -- Give time for cleanup
+-- Kill ALL existing instances more aggressively
+for key, value in pairs(_G) do
+    if type(key) == "string" and (key:find("EnhancedScript") or key:find("ScriptController")) then
+        if type(value) == "table" and value.Destroy then
+            pcall(function()
+                value:Destroy()
+            end)
+        end
+        _G[key] = nil
+    end
 end
 
+-- Wait for cleanup
+task.wait(0.5)
+
+-- Check if already running
+if _G[scriptIdentifier] then
+    warn("Script already running for this user in this server!")
+    return
+end
+
+-- Load external command script ONCE
+local externalScriptLoaded = false
+pcall(function()
+    loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
+    externalScriptLoaded = true
+end)
+
+local PlaceId = game.PlaceId
+
+-- ENHANCED SCRIPT CONTROLLER
 local ScriptController = {}
 ScriptController.__index = ScriptController
 
 function ScriptController:Destroy()
     self.active = false
+    print("Destroying script instance for " .. LP.Name)
+    
     -- Cleanup all connections
-    for _, connection in pairs(self.connections) do
+    for i, connection in ipairs(self.connections) do
         if connection then
-            -- Handle RBXScriptConnection objects
-            if type(connection) == "userdata" and connection.Connected then
-                connection:Disconnect()
-            -- Handle task.spawn coroutines
-            elseif type(connection) == "thread" then
-                task.cancel(connection)
-            -- Handle any other cleanup function
-            elseif type(connection) == "function" then
-                pcall(connection)
-            end
+            pcall(function()
+                -- Handle RBXScriptConnection objects
+                if type(connection) == "userdata" and connection.Connected then
+                    connection:Disconnect()
+                -- Handle task.spawn coroutines
+                elseif type(connection) == "thread" then
+                    task.cancel(connection)
+                -- Handle any other cleanup function
+                elseif type(connection) == "function" then
+                    connection()
+                end
+            end)
         end
     end
+    
     self.connections = {}
     _G[scriptIdentifier] = nil
+    print("Script cleanup completed for " .. LP.Name)
 end
 
 function ScriptController.new()
@@ -54,7 +80,9 @@ function ScriptController.new()
     return self
 end
 
+-- Create singleton instance
 _G[scriptIdentifier] = ScriptController.new()
+print("Script initialized for " .. LP.Name .. " in JobId: " .. game.JobId)
 
 -- CENTRALIZED TELEPORT TARGETS
 local teleportTargets = {
@@ -78,9 +106,9 @@ local originalTargets = {
 
 -- Line formation positions (facing backward - 180 degrees turned)
 local lineTargets = {
-    ["Cubot_Nova3"]     = CFrame.new(-15, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cub0t_01"]        = CFrame.new(0, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_nova4"]     = CFrame.new(15, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova3"]     = CFrame.new(-31, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cub0t_01"]        = CFrame.new(-23, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_nova4"]     = CFrame.new(-15, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
     ["cubot_autoIoop"]  = CFrame.new(-7, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
     ["Cubot_Nova2"]     = CFrame.new(-3, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
     ["Cubot_Nova1"]     = CFrame.new(4, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
@@ -103,7 +131,6 @@ local minPlayersRequired = 4
 local hopAttemptInterval = 3
 local isActivated = false
 local oldScriptActive = true
-local externalScriptLoaded = false
 
 -- STATE VARIABLES
 local spamConnection = nil
@@ -184,12 +211,13 @@ local WHITELISTED_USERS = {
     ["xLiv3_r"] = true,
 }
 
--- SHARED REVENGE OBJECT
+-- SHARED REVENGE OBJECT (Create only once per server)
 local sharedRevenge = workspace:FindFirstChild("SharedRevenge")
 if not sharedRevenge then
     sharedRevenge = Instance.new("StringValue")
     sharedRevenge.Name = "SharedRevenge"
     sharedRevenge.Parent = workspace
+    sharedRevenge.Value = ""
 end
 
 -- QUEUE ON TELEPORT SETUP
@@ -197,7 +225,7 @@ local KeepInfYield = true
 local TeleportCheck = false
 local queueteleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
 
-LP.OnTeleport:Connect(function()
+local teleportConnection = LP.OnTeleport:Connect(function()
     if KeepInfYield and not TeleportCheck and queueteleport then
         TeleportCheck = true
         pcall(function()
@@ -205,6 +233,7 @@ LP.OnTeleport:Connect(function()
         end)
     end
 end)
+table.insert(_G[scriptIdentifier].connections, teleportConnection)
 
 -- Initialize targetNames with ALWAYS_KILL users
 for name, _ in pairs(ALWAYS_KILL) do
@@ -239,7 +268,7 @@ local function countPlayerTools(player)
 end
 
 local function destroyExcessTools(player)
-    if not player or player == LP or not _G[scriptIdentifier].active then return end
+    if not player or player == LP or not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
     
     local toolsDestroyed = 0
     local toolsFound = {}
@@ -301,9 +330,7 @@ local function startToolLimiter()
         end
     end)
     
-    if _G[scriptIdentifier] then
-        table.insert(_G[scriptIdentifier].connections, toolLimiterConnection)
-    end
+    table.insert(_G[scriptIdentifier].connections, toolLimiterConnection)
 end
 
 -- OPTIMIZED TELEPORT FUNCTIONS
@@ -316,7 +343,7 @@ local function setupTeleport()
     local cf = teleportTargets[LP.Name]
     if cf then
         teleportConnection = RunService.Heartbeat:Connect(function()
-            if not _G[scriptIdentifier].active then return end
+            if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
             
             local character = LP.Character
             if character then
@@ -423,7 +450,7 @@ end
 
 -- OPTIMIZED AUTOEQUIP SYSTEM (Extracted from provided script)
 local function CheckIfEquipped()
-    if not autoequipEnabled or not _G[scriptIdentifier].active then return end
+    if not autoequipEnabled or not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
     
     if not LP.Character:FindFirstChild("Sword") then
         if LP.Backpack:FindFirstChild("Sword") then
@@ -446,10 +473,15 @@ local function startAutoequip()
     if autoequipEnabled then return end
     
     autoequipEnabled = true
+    print(LP.Name .. ": Starting autoequip")
     
     -- Use the optimized autoequip from the provided script
+    if autoequipConnection then
+        autoequipConnection:Disconnect()
+    end
+    
     autoequipConnection = RunService.RenderStepped:Connect(function()
-        if not _G[scriptIdentifier].active then return end
+        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
         
         if autoequipEnabled then
             if LP.Character then
@@ -469,6 +501,7 @@ local function stopAutoequip()
     if not autoequipEnabled then return end
     
     autoequipEnabled = false
+    print(LP.Name .. ": Stopping autoequip")
     
     if autoequipConnection then
         autoequipConnection:Disconnect()
@@ -497,9 +530,7 @@ local function updateAutoequipState()
         end
     end)
     
-    if _G[scriptIdentifier] then
-        table.insert(_G[scriptIdentifier].connections, autoequipMonitorConnection)
-    end
+    table.insert(_G[scriptIdentifier].connections, autoequipMonitorConnection)
 end
 
 -- ENHANCED SPAM LOOP
@@ -507,9 +538,10 @@ local function startSpamLoop()
     if spamConnection then return end
     
     spamAutoequipEnabled = true
+    print(LP.Name .. ": Starting spam loop")
     
     spamConnection = RunService.Stepped:Connect(function()
-        if not _G[scriptIdentifier].active then return end
+        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
         
         -- Destroy unwanted tools and equip others
         for _, tool in pairs(LP.Backpack:GetChildren()) do
@@ -540,6 +572,7 @@ local function stopSpamLoop()
     end
     
     spamAutoequipEnabled = false
+    print(LP.Name .. ": Stopped spam loop")
 end
 
 -- ENHANCED GOON LOOP
@@ -564,9 +597,10 @@ local function startGoonLoop()
     if isGooning then return end
     
     isGooning = true
+    print(LP.Name .. ": Starting goon loop")
     
     goonConnection = RunService.Heartbeat:Connect(function()
-        if not isGooning or not _G[scriptIdentifier].active then return end
+        if not isGooning or not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
         
         local character = LP.Character
         if not character then return end
@@ -606,6 +640,7 @@ local function stopGoonLoop()
     if not isGooning then return end
     
     isGooning = false
+    print(LP.Name .. ": Stopped goon loop")
     
     if goonConnection then
         goonConnection:Disconnect()
@@ -631,6 +666,7 @@ local function execute()
     
     isActivated = true
     activateAutoequipEnabled = true
+    print(LP.Name .. ": Executing enhanced script")
     
     if not externalScriptLoaded then
         local success, err = pcall(function()
@@ -640,8 +676,9 @@ local function execute()
         
         if success then
             externalScriptLoaded = true
+            print(LP.Name .. ": External script loaded successfully")
         else
-            warn("Failed to load aci.lua:", err)
+            warn(LP.Name .. ": Failed to load aci.lua:", err)
             isActivated = false
             activateAutoequipEnabled = false
         end
@@ -688,7 +725,7 @@ local function optimizeGraphics()
     -- Enhanced graphics optimization
     task.spawn(function()
         for _, obj in pairs(game:GetDescendants()) do
-            if not _G[scriptIdentifier].active then break end
+            if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then break end
             
             if obj:IsA("BasePart") then
                 obj.Material = Enum.Material.Plastic
@@ -728,7 +765,7 @@ end
 -- ENHANCED ANTI-FLING
 local function setupAntiFling()
     local connection = RunService.Stepped:Connect(function()
-        if not _G[scriptIdentifier].active then return end
+        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
         
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LP and player.Character then
@@ -869,6 +906,7 @@ local function forceServerHop()
     if isHopping then return end
     
     isHopping = true
+    print(LP.Name .. ": Attempting server hop...")
     
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
@@ -929,9 +967,9 @@ local function checkAndHopServers()
     forceServerHop()
 end
 
--- ENHANCED CHAT COMMANDS
+-- ENHANCED CHAT COMMANDS WITH BETTER DETECTION
 local function processChatCommand(msg, sender)
-    if msg:sub(1, #CMD_PREFIX) ~= CMD_PREFIX then return end
+    if not msg or msg:sub(1, #CMD_PREFIX) ~= CMD_PREFIX then return end
     
     local parts = {}
     for word in msg:sub(#CMD_PREFIX + 1):gmatch("%S+") do
@@ -940,6 +978,8 @@ local function processChatCommand(msg, sender)
     
     local cmd = parts[1] and parts[1]:lower()
     local param = parts[2]
+    
+    print(LP.Name .. ": Processing command '" .. (cmd or "nil") .. "' from " .. sender.Name)
     
     if cmd == "activate" then
         execute()
@@ -965,31 +1005,38 @@ local function processChatCommand(msg, sender)
     if cmd == "hop" then
         if param == "on" then
             serverHopEnabled = true
+            print(LP.Name .. ": Server hopping enabled")
         elseif param == "off" then
             serverHopEnabled = false
+            print(LP.Name .. ": Server hopping disabled")
         elseif param == "now" then
-            checkAndHopServers()
+            forceServerHop()
         end
         return
     end
     
-    -- NEW SERVERHOP COMMAND - Direct chat detection
+    -- SERVERHOP COMMAND - Direct chat detection
     if cmd == "serverhop" then
         if not param then
             -- .serverhop without parameters - hop all users running the script
+            print(LP.Name .. ": Hopping (no parameter)")
             forceServerHop()
         else
             -- .serverhop with number - hop specific user
             local userNum = tonumber(param)
             if userNum and userNumbers[LP.Name] == userNum then
                 -- This user matches the specified number, so they should hop
+                print(LP.Name .. ": Hopping (user number " .. userNum .. " matched)")
                 forceServerHop()
+            else
+                print(LP.Name .. ": Not hopping (user number " .. (userNum or "nil") .. " doesn't match " .. (userNumbers[LP.Name] or "nil") .. ")")
             end
         end
         return
     end
     
     if cmd == "line" then
+        print(LP.Name .. ": Line formation activated")
         for targetName, pos in pairs(lineTargets) do
             teleportTargets[targetName] = pos
         end
@@ -998,6 +1045,7 @@ local function processChatCommand(msg, sender)
     end
     
     if cmd == "unline" then
+        print(LP.Name .. ": Line formation deactivated")
         for targetName, pos in pairs(originalTargets) do
             teleportTargets[targetName] = pos
         end
@@ -1024,28 +1072,37 @@ local function processChatCommand(msg, sender)
     -- Handle .unloop all command (separate from player search)
     if cmd == "unloop" and param == "all" then
         local removedCount = removeAllTargetsExceptAlwaysKill()
-        print("Removed " .. removedCount .. " targets (keeping ALWAYS_KILL players)")
+        print(LP.Name .. ": Removed " .. removedCount .. " targets (keeping ALWAYS_KILL players)")
         return
     end
     
     -- Regular player-specific commands
     if not cmd or not param then return end
-    local player = findPlayerByPartialName(parts[2])
-    if not player then return end
+    local player = findPlayerByPartialName(param)
+    if not player then 
+        print(LP.Name .. ": Player '" .. param .. "' not found")
+        return 
+    end
 
     if cmd == "loop" then
         addPermanentTarget(player)
+        print(LP.Name .. ": Added " .. player.Name .. " to permanent targets")
     elseif cmd == "unloop" then
-        removeTarget(player)
+        if removeTarget(player) then
+            print(LP.Name .. ": Removed " .. player.Name .. " from targets")
+        end
     end
 end
 
--- SETUP CHAT COMMAND HANDLER
+-- IMPROVED CHAT COMMAND HANDLER WITH MULTIPLE FALLBACKS
 local function setupTextChatCommandHandler()
+    local commandsConnected = false
+    
+    -- Method 1: New TextChatService
     pcall(function()
         if TextChatService and TextChatService.MessageReceived then
             local connection = TextChatService.MessageReceived:Connect(function(txtMsg)
-                if not _G[scriptIdentifier].active then return end
+                if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
                 
                 if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
                     local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
@@ -1060,98 +1117,145 @@ local function setupTextChatCommandHandler()
                 end
             end)
             table.insert(_G[scriptIdentifier].connections, connection)
-        else
-            local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 10)
+            commandsConnected = true
+            print(LP.Name .. ": Connected to TextChatService")
+        end
+    end)
+    
+    -- Method 2: Legacy Chat System
+    if not commandsConnected then
+        pcall(function()
+            local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 5)
             if events then
                 local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
                 if msgEvent then
                     local connection = msgEvent.OnClientEvent:Connect(function(data)
-                        if not _G[scriptIdentifier].active then return end
+                        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
                         
-                        local speaker = Players:FindFirstChild(data.FromSpeaker)
-                        if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
-                            local messageText = data.Message
-                            processChatCommand(messageText, speaker)
-                            
-                            if messageText == ".update" then
-                                sharedRevenge.Value = "UPDATE"
+                        if data and data.FromSpeaker and data.Message then
+                            local speaker = Players:FindFirstChild(data.FromSpeaker)
+                            if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
+                                local messageText = data.Message
+                                processChatCommand(messageText, speaker)
+                                
+                                if messageText == ".update" then
+                                    sharedRevenge.Value = "UPDATE"
+                                end
                             end
                         end
                     end)
                     table.insert(_G[scriptIdentifier].connections, connection)
+                    commandsConnected = true
+                    print(LP.Name .. ": Connected to Legacy Chat System")
                 end
+            end
+        end)
+    end
+    
+    -- Method 3: StarterGui Chat Events (Fallback)
+    if not commandsConnected then
+        pcall(function()
+            local connection = Players.PlayerChatted:Connect(function(sender, message)
+                if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
+                
+                if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
+                    processChatCommand(message, sender)
+                    
+                    if message == ".update" then
+                        sharedRevenge.Value = "UPDATE"
+                    end
+                end
+            end)
+            table.insert(_G[scriptIdentifier].connections, connection)
+            commandsConnected = true
+            print(LP.Name .. ": Connected to PlayerChatted (fallback)")
+        end)
+    end
+    
+    if not commandsConnected then
+        warn(LP.Name .. ": Failed to connect to any chat system!")
+    end
+end
+
+-- SHARED REVENGE LISTENER WITH BETTER ERROR HANDLING
+local function setupSharedRevengeListener()
+    local connection = sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
+        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
+        
+        local val = sharedRevenge.Value
+        if not val or val == "" then return end
+        
+        print(LP.Name .. ": Received shared revenge signal: " .. val)
+
+        if val == "UPDATE" then
+            if KeepInfYield and not TeleportCheck and queueteleport then
+                TeleportCheck = true
+                pcall(function()
+                    queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
+                end)
+            end
+            TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId)
+            return
+        end
+
+        if not oldScriptActive then return end
+
+        if val:sub(1, 9) == "TEMP_EXT:" then
+            local name = val:sub(10)
+            local player = Players:FindFirstChild(name)
+            if player then 
+                addTemporaryTarget(player, SECONDARY_TARGET_DURATION)
+                print(LP.Name .. ": Added temporary extended target: " .. name)
+            end
+        elseif val:sub(1, 5) == "TEMP:" then
+            local name = val:sub(6)
+            local player = Players:FindFirstChild(name)
+            if player then 
+                addTemporaryTarget(player)
+                print(LP.Name .. ": Added temporary target: " .. name)
+            end
+        else
+            local player = Players:FindFirstChild(val)
+            if player then 
+                addPermanentTarget(player)
+                print(LP.Name .. ": Added permanent target: " .. val)
             end
         end
     end)
-end
-
--- SHARED REVENGE LISTENER
-local connection = sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
-    if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
     
-    local val = sharedRevenge.Value
-
-    if val == "UPDATE" then
-        if KeepInfYield and not TeleportCheck and queueteleport then
-            TeleportCheck = true
-            pcall(function()
-                queueteleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/file.lua'))()")
-            end)
-        end
-        TeleportService:TeleportToPlaceInstance(PlaceId, game.JobId)
-        return
-    end
-
-    if not oldScriptActive then return end
-
-    if val:sub(1, 9) == "TEMP_EXT:" then
-        local name = val:sub(10)
-        local player = Players:FindFirstChild(name)
-        if player then addTemporaryTarget(player, SECONDARY_TARGET_DURATION) end
-    elseif val:sub(1, 5) == "TEMP:" then
-        local name = val:sub(6)
-        local player = Players:FindFirstChild(name)
-        if player then addTemporaryTarget(player) end
-    else
-        local player = Players:FindFirstChild(val)
-        if player then addPermanentTarget(player) end
-    end
-end)
-
-if _G[scriptIdentifier] then
     table.insert(_G[scriptIdentifier].connections, connection)
 end
 
 -- CLEANUP TEMP TARGETS
-local tempCleanupConnection = task.spawn(function()
-    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
-        if oldScriptActive then
-            local now = os.time()
-            local targetsRemoved = false
-            
-            for name, expiration in pairs(temporaryTargets) do
-                if expiration <= now then
-                    temporaryTargets[name] = nil
-                    
-                    if not targetNames[name] then
-                        local player = Players:FindFirstChild(name)
-                        if player then 
-                            for i = #targetList, 1, -1 do
-                                if targetList[i] == player then
-                                    table.remove(targetList, i)
-                                    targetsRemoved = true
+local function setupTempTargetCleanup()
+    local tempCleanupConnection = task.spawn(function()
+        while _G[scriptIdentifier] and _G[scriptIdentifier].active do
+            if oldScriptActive then
+                local now = os.time()
+                local targetsRemoved = false
+                
+                for name, expiration in pairs(temporaryTargets) do
+                    if expiration <= now then
+                        temporaryTargets[name] = nil
+                        
+                        if not targetNames[name] then
+                            local player = Players:FindFirstChild(name)
+                            if player then 
+                                for i = #targetList, 1, -1 do
+                                    if targetList[i] == player then
+                                        table.remove(targetList, i)
+                                        targetsRemoved = true
+                                    end
                                 end
                             end
                         end
                     end
                 end
             end
+            task.wait(5) -- Check every 5 seconds instead of every 1 second
         end
-        task.wait(5) -- Check every 5 seconds instead of every 1 second
-    end
-end)
-
-if _G[scriptIdentifier] then
+    end)
+    
     table.insert(_G[scriptIdentifier].connections, tempCleanupConnection)
 end
 
@@ -1247,7 +1351,7 @@ end
 
 -- ENHANCED HEARTBEAT FUNCTION
 local function HB()
-    if not oldScriptActive or not _G[scriptIdentifier].active then return end
+    if not oldScriptActive or not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
     
     local character = LP.Character
     if not character then return end
@@ -1313,7 +1417,7 @@ local function SetupKillLogger()
         if not event then return end
         
         local connection = event.OnClientEvent:Connect(function(killerName, victimName, authCode)
-            if not _G[scriptIdentifier].active then return end
+            if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
             
             if authCode ~= "Anrt4tiEx354xpl5oitzs" then return end
             
@@ -1343,7 +1447,7 @@ local function SetupDamageTracker(humanoid)
     if not oldScriptActive then return end
     
     local connection1 = humanoid.HealthChanged:Connect(function()
-        if not oldScriptActive or not LP.Character or not _G[scriptIdentifier].active then return end
+        if not oldScriptActive or not LP.Character or not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
         
         local counts = {}
         
@@ -1373,7 +1477,7 @@ local function SetupDamageTracker(humanoid)
     end)
     
     local connection2 = humanoid.Died:Connect(function()
-        if not oldScriptActive or not _G[scriptIdentifier].active then return end
+        if not oldScriptActive or not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
         
         if pendingDamager and not MAIN_USERS[pendingDamager.Name] and
            not SECONDARY_MAIN_USERS[pendingDamager.Name] and not SIGMA_USERS[pendingDamager.Name] and
@@ -1426,72 +1530,70 @@ local function SetupChar(character)
 end
 
 -- CHARACTER EVENT HANDLING
-local connection = LP.CharacterAdded:Connect(function(character)
-    if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
-    
-    stopGoonLoop()
-    
-    pcall(function()
-        character:WaitForChild("Humanoid")
-        character:WaitForChild("HumanoidRootPart")
+local function setupCharacterHandling()
+    local connection = LP.CharacterAdded:Connect(function(character)
+        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
         
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            local deathConnection = humanoid.Died:Connect(function()
-                stopGoonLoop()
-            end)
-            if _G[scriptIdentifier] then
+        stopGoonLoop()
+        
+        pcall(function()
+            character:WaitForChild("Humanoid")
+            character:WaitForChild("HumanoidRootPart")
+            
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                local deathConnection = humanoid.Died:Connect(function()
+                    stopGoonLoop()
+                end)
                 table.insert(_G[scriptIdentifier].connections, deathConnection)
             end
-        end
-        
-        SetupChar(character)
+            
+            SetupChar(character)
+        end)
     end)
-end)
-
-if _G[scriptIdentifier] then
+    
     table.insert(_G[scriptIdentifier].connections, connection)
 end
 
 -- OPTIMIZED SERVER HOP MONITORING
-local serverHopConnection = task.spawn(function()
-    task.wait(5)
-    
-    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
-        if serverHopEnabled then
-            local currentPlayers = #Players:GetPlayers()
-            
-            if currentPlayers < minPlayersRequired then
-                checkAndHopServers()
-                task.wait(hopAttemptInterval)
+local function setupServerHopMonitoring()
+    local serverHopConnection = task.spawn(function()
+        task.wait(5)
+        
+        while _G[scriptIdentifier] and _G[scriptIdentifier].active do
+            if serverHopEnabled then
+                local currentPlayers = #Players:GetPlayers()
+                
+                if currentPlayers < minPlayersRequired then
+                    checkAndHopServers()
+                    task.wait(hopAttemptInterval)
+                else
+                    task.wait(20)
+                end
             else
                 task.wait(20)
             end
-        else
-            task.wait(20)
         end
-    end
-end)
-
-if _G[scriptIdentifier] then
+    end)
+    
     table.insert(_G[scriptIdentifier].connections, serverHopConnection)
 end
 
 -- OPTIMIZED TOOL COUNT MONITORING
-local toolCountConnection = task.spawn(function()
-    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
-        if oldScriptActive then
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LP then
-                    checkPlayerToolCount(player)
+local function setupToolCountMonitoring()
+    local toolCountConnection = task.spawn(function()
+        while _G[scriptIdentifier] and _G[scriptIdentifier].active do
+            if oldScriptActive then
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LP then
+                        checkPlayerToolCount(player)
+                    end
                 end
             end
+            task.wait(5) -- Check every 5 seconds instead of 3
         end
-        task.wait(5) -- Check every 5 seconds instead of 3
-    end
-end)
-
-if _G[scriptIdentifier] then
+    end)
+    
     table.insert(_G[scriptIdentifier].connections, toolCountConnection)
 end
 
@@ -1510,7 +1612,7 @@ local function onPlayerAdded(player)
         
         task.spawn(function()
             task.wait(3)
-            if player and player.Parent and _G[scriptIdentifier].active then
+            if player and player.Parent and _G[scriptIdentifier] and _G[scriptIdentifier].active then
                 checkPlayerToolCount(player)
             end
         end)
@@ -1521,7 +1623,7 @@ local function onPlayerAdded(player)
         local connection1 = player.CharacterAdded:Connect(function(character)
             task.spawn(function()
                 task.wait(1)
-                if _G[scriptIdentifier].active then
+                if _G[scriptIdentifier] and _G[scriptIdentifier].active then
                     destroyExcessTools(player)
                 end
             end)
@@ -1532,7 +1634,7 @@ local function onPlayerAdded(player)
         local backpack = player:FindFirstChild("Backpack")
         if backpack then
             local connection2 = backpack.ChildAdded:Connect(function(child)
-                if child:IsA("Tool") and _G[scriptIdentifier].active then
+                if child:IsA("Tool") and _G[scriptIdentifier] and _G[scriptIdentifier].active then
                     task.spawn(function()
                         destroyExcessTools(player)
                     end)
@@ -1553,43 +1655,70 @@ local function onPlayerRemoving(player)
     end
 end
 
-local playerAddedConnection = Players.PlayerAdded:Connect(onPlayerAdded)
-local playerRemovingConnection = Players.PlayerRemoving:Connect(onPlayerRemoving)
-
-if _G[scriptIdentifier] then
+local function setupPlayerEvents()
+    local playerAddedConnection = Players.PlayerAdded:Connect(onPlayerAdded)
+    local playerRemovingConnection = Players.PlayerRemoving:Connect(onPlayerRemoving)
+    
     table.insert(_G[scriptIdentifier].connections, playerAddedConnection)
     table.insert(_G[scriptIdentifier].connections, playerRemovingConnection)
 end
 
--- PLACE ID CHECK
-if game.PlaceId ~= 6110766473 then return end
-
--- INITIALIZATION
-setupAntiAFK()
-hideUI()
-optimizeGraphics()
-setupAntiFling()
-startToolLimiter()
-initializeKillCounter()
-setupTextChatCommandHandler()
-SetupKillLogger()
-
--- Setup character if already exists
-if LP.Character then 
-    SetupChar(LP.Character) 
-end
-
--- Add existing ALWAYS_KILL targets
-if oldScriptActive then
-    for _, player in pairs(Players:GetPlayers()) do
-        if ALWAYS_KILL[player.Name] then
-            addPermanentTarget(player)
-        end
-        checkPlayerToolCount(player)
+-- MAIN INITIALIZATION FUNCTION
+local function initializeScript()
+    -- PLACE ID CHECK
+    if game.PlaceId ~= 6110766473 then 
+        print(LP.Name .. ": Wrong place ID, script terminated")
+        return 
     end
+
+    print(LP.Name .. ": Starting initialization...")
+    
+    -- INITIALIZATION
+    setupAntiAFK()
+    hideUI()
+    optimizeGraphics()
+    setupAntiFling()
+    startToolLimiter()
+    initializeKillCounter()
+    
+    -- Setup all systems
+    setupTextChatCommandHandler()
+    setupSharedRevengeListener()
+    setupTempTargetCleanup()
+    SetupKillLogger()
+    setupCharacterHandling()
+    setupServerHopMonitoring()
+    setupToolCountMonitoring()
+    setupPlayerEvents()
+    
+    -- Setup character if already exists
+    if LP.Character then 
+        SetupChar(LP.Character) 
+    end
+    
+    -- Add existing ALWAYS_KILL targets
+    if oldScriptActive then
+        for _, player in pairs(Players:GetPlayers()) do
+            if ALWAYS_KILL[player.Name] then
+                addPermanentTarget(player)
+            end
+            checkPlayerToolCount(player)
+        end
+    end
+    
+    -- Initialize autoequip state monitoring
+    updateAutoequipState()
+    
+    print(LP.Name .. ": Enhanced script loaded - FPS optimized with proper connection management and 0.15s autoequip monitoring")
 end
 
--- Initialize autoequip state monitoring
-updateAutoequipState()
-
-print("Enhanced script loaded - FPS optimized with proper connection management and 0.15s autoequip monitoring")
+-- SAFE INITIALIZATION WITH ERROR HANDLING
+task.spawn(function()
+    local success, err = pcall(initializeScript)
+    if not success then
+        warn(LP.Name .. ": Script initialization failed:", err)
+        if _G[scriptIdentifier] then
+            _G[scriptIdentifier]:Destroy()
+        end
+    end
+end)
