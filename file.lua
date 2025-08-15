@@ -420,9 +420,33 @@ local function optimizedAutoEquip()
         if sword then
             pcall(function()
                 sword.Parent = character
+                -- Ensure proper tool setup immediately after equipping
+                if sword:FindFirstChild("Handle") then
+                    sword.Handle.Massless = true
+                    sword.Handle.CanCollide = false
+                end
             end)
+            return true
         end
     end
+    
+    -- If no sword, try to equip any available tool (except unwanted ones)
+    if backpack then
+        for _, tool in pairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name ~= "Punch" and tool.Name ~= "Ground Slam" and tool.Name ~= "Stomp" then
+                pcall(function()
+                    tool.Parent = character
+                    if tool:FindFirstChild("Handle") then
+                        tool.Handle.Massless = true
+                        tool.Handle.CanCollide = false
+                    end
+                end)
+                return true
+            end
+        end
+    end
+    
+    return false
 end
 
 local function startAutoequip()
@@ -446,7 +470,9 @@ local function startAutoequip()
     -- Monitor backpack changes for immediate response
     if LP.Backpack then
         autoequipConnections[2] = LP.Backpack.ChildAdded:Connect(function(tool)
-            if tool.Name == "Sword" and tool:IsA("Tool") and autoequipEnabled then
+            if tool:IsA("Tool") and autoequipEnabled then
+                -- Small delay to prevent spam
+                task.wait(0.05)
                 optimizedAutoEquip()
             end
         end)
@@ -455,7 +481,7 @@ local function startAutoequip()
     -- Monitor character changes
     if LP.Character then
         autoequipConnections[3] = LP.Character.ChildRemoved:Connect(function(child)
-            if child.Name == "Sword" and child:IsA("Tool") and autoequipEnabled then
+            if child:IsA("Tool") and autoequipEnabled then
                 task.wait(0.1) -- Small delay before re-equipping
                 optimizedAutoEquip()
             end
@@ -486,7 +512,7 @@ local function updateAutoequipState()
     end
 end
 
--- ENHANCED SPAM LOOP WITH IMPROVED AUTOEQUIP INTEGRATION
+-- ENHANCED SPAM LOOP WITH IMPROVED TARGETING INTEGRATION
 local function startSpamLoop()
     if spamConnection then return end
     
@@ -494,7 +520,7 @@ local function startSpamLoop()
     updateAutoequipState()
     
     spamConnection = RunService.RenderStepped:Connect(function()
-        -- Destroy unwanted tools
+        -- Destroy unwanted tools first
         for _, tool in pairs(LP.Backpack:GetChildren()) do
             if tool.Name == "Punch" or tool.Name == "Ground Slam" or tool.Name == "Stomp" then
                 pcall(function()
@@ -503,16 +529,26 @@ local function startSpamLoop()
             end
         end
         
-        -- Auto-equip sword if enabled
+        -- Auto-equip sword if enabled and not equipped
         if autoequipEnabled then
-            optimizedAutoEquip()
+            local character = LP.Character
+            if character and not character:FindFirstChild("Sword") then
+                optimizedAutoEquip()
+            end
         end
         
-        -- Activate equipped tool
+        -- Activate equipped tool for targeting
         local character = LP.Character
         if character then
             local tool = character:FindFirstChildOfClass("Tool")
             if tool then
+                -- Ensure proper tool properties for combat
+                if tool:FindFirstChild("Handle") then
+                    pcall(function()
+                        tool.Handle.Massless = true
+                        tool.Handle.CanCollide = false
+                    end)
+                end
                 tool:Activate()
             end
         end
