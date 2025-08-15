@@ -30,8 +30,17 @@ function ScriptController:Destroy()
     self.active = false
     -- Cleanup all connections
     for _, connection in pairs(self.connections) do
-        if connection and connection.Connected then
-            connection:Disconnect()
+        if connection then
+            -- Handle RBXScriptConnection objects
+            if type(connection) == "userdata" and connection.Connected then
+                connection:Disconnect()
+            -- Handle task.spawn coroutines
+            elseif type(connection) == "thread" then
+                task.cancel(connection)
+            -- Handle any other cleanup function
+            elseif type(connection) == "function" then
+                pcall(connection)
+            end
         end
     end
     self.connections = {}
@@ -274,13 +283,13 @@ local function startToolLimiter()
     if toolLimiterConnection then return end
     
     toolLimiterConnection = task.spawn(function()
-        while _G[scriptIdentifier].active do
+        while _G[scriptIdentifier] and _G[scriptIdentifier].active do
             local currentTime = tick()
             if currentTime - lastToolCheck >= toolCheckInterval then
                 lastToolCheck = currentTime
                 
                 for _, player in pairs(Players:GetPlayers()) do
-                    if player ~= LP and _G[scriptIdentifier].active then
+                    if player ~= LP and _G[scriptIdentifier] and _G[scriptIdentifier].active then
                         local toolCount = countPlayerTools(player)
                         if toolCount > maxToolsPerPlayer then
                             destroyExcessTools(player)
@@ -292,7 +301,9 @@ local function startToolLimiter()
         end
     end)
     
-    table.insert(_G[scriptIdentifier].connections, toolLimiterConnection)
+    if _G[scriptIdentifier] then
+        table.insert(_G[scriptIdentifier].connections, toolLimiterConnection)
+    end
 end
 
 -- OPTIMIZED TELEPORT FUNCTIONS
@@ -473,7 +484,7 @@ local function updateAutoequipState()
     if autoequipMonitorConnection then return end -- Prevent multiple monitors
     
     autoequipMonitorConnection = task.spawn(function()
-        while _G[scriptIdentifier].active do
+        while _G[scriptIdentifier] and _G[scriptIdentifier].active do
             local shouldAutoequip = shouldAutoequipBeEnabled()
             
             if shouldAutoequip and not autoequipEnabled then
@@ -486,7 +497,9 @@ local function updateAutoequipState()
         end
     end)
     
-    table.insert(_G[scriptIdentifier].connections, autoequipMonitorConnection)
+    if _G[scriptIdentifier] then
+        table.insert(_G[scriptIdentifier].connections, autoequipMonitorConnection)
+    end
 end
 
 -- ENHANCED SPAM LOOP
@@ -1074,7 +1087,7 @@ end
 
 -- SHARED REVENGE LISTENER
 local connection = sharedRevenge:GetPropertyChangedSignal("Value"):Connect(function()
-    if not _G[scriptIdentifier].active then return end
+    if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
     
     local val = sharedRevenge.Value
 
@@ -1105,11 +1118,13 @@ local connection = sharedRevenge:GetPropertyChangedSignal("Value"):Connect(funct
     end
 end)
 
-table.insert(_G[scriptIdentifier].connections, connection)
+if _G[scriptIdentifier] then
+    table.insert(_G[scriptIdentifier].connections, connection)
+end
 
 -- CLEANUP TEMP TARGETS
 local tempCleanupConnection = task.spawn(function()
-    while _G[scriptIdentifier].active do
+    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
         if oldScriptActive then
             local now = os.time()
             local targetsRemoved = false
@@ -1136,7 +1151,9 @@ local tempCleanupConnection = task.spawn(function()
     end
 end)
 
-table.insert(_G[scriptIdentifier].connections, tempCleanupConnection)
+if _G[scriptIdentifier] then
+    table.insert(_G[scriptIdentifier].connections, tempCleanupConnection)
+end
 
 -- ENHANCED TOOL COUNT DETECTION
 local function checkPlayerToolCount(player)
@@ -1410,7 +1427,7 @@ end
 
 -- CHARACTER EVENT HANDLING
 local connection = LP.CharacterAdded:Connect(function(character)
-    if not _G[scriptIdentifier].active then return end
+    if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
     
     stopGoonLoop()
     
@@ -1423,20 +1440,24 @@ local connection = LP.CharacterAdded:Connect(function(character)
             local deathConnection = humanoid.Died:Connect(function()
                 stopGoonLoop()
             end)
-            table.insert(_G[scriptIdentifier].connections, deathConnection)
+            if _G[scriptIdentifier] then
+                table.insert(_G[scriptIdentifier].connections, deathConnection)
+            end
         end
         
         SetupChar(character)
     end)
 end)
 
-table.insert(_G[scriptIdentifier].connections, connection)
+if _G[scriptIdentifier] then
+    table.insert(_G[scriptIdentifier].connections, connection)
+end
 
 -- OPTIMIZED SERVER HOP MONITORING
 local serverHopConnection = task.spawn(function()
     task.wait(5)
     
-    while _G[scriptIdentifier].active do
+    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
         if serverHopEnabled then
             local currentPlayers = #Players:GetPlayers()
             
@@ -1452,11 +1473,13 @@ local serverHopConnection = task.spawn(function()
     end
 end)
 
-table.insert(_G[scriptIdentifier].connections, serverHopConnection)
+if _G[scriptIdentifier] then
+    table.insert(_G[scriptIdentifier].connections, serverHopConnection)
+end
 
 -- OPTIMIZED TOOL COUNT MONITORING
 local toolCountConnection = task.spawn(function()
-    while _G[scriptIdentifier].active do
+    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
         if oldScriptActive then
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LP then
@@ -1468,7 +1491,9 @@ local toolCountConnection = task.spawn(function()
     end
 end)
 
-table.insert(_G[scriptIdentifier].connections, toolCountConnection)
+if _G[scriptIdentifier] then
+    table.insert(_G[scriptIdentifier].connections, toolCountConnection)
+end
 
 -- PLAYER EVENT HANDLERS
 local function onPlayerAdded(player)
@@ -1531,8 +1556,10 @@ end
 local playerAddedConnection = Players.PlayerAdded:Connect(onPlayerAdded)
 local playerRemovingConnection = Players.PlayerRemoving:Connect(onPlayerRemoving)
 
-table.insert(_G[scriptIdentifier].connections, playerAddedConnection)
-table.insert(_G[scriptIdentifier].connections, playerRemovingConnection)
+if _G[scriptIdentifier] then
+    table.insert(_G[scriptIdentifier].connections, playerAddedConnection)
+    table.insert(_G[scriptIdentifier].connections, playerRemovingConnection)
+end
 
 -- PLACE ID CHECK
 if game.PlaceId ~= 6110766473 then return end
