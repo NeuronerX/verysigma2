@@ -122,12 +122,12 @@ local originalTargets = {
 
 -- Line formation positions (standing normally on ground, facing backward - 180 degrees turned)
 local lineTargets = {
-    ["Cubot_Nova3"]     = CFrame.new(-15, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cub0t_01"]        = CFrame.new(3, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_nova4"]     = CFrame.new(21, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_autoIoop"]  = CFrame.new(-7, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova2"]     = CFrame.new(-3, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova1"]     = CFrame.new(4, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova3"]     = CFrame.new(-15, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cub0t_01"]        = CFrame.new(3, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_nova4"]     = CFrame.new(21, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_autoIoop"]  = CFrame.new(-7, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova2"]     = CFrame.new(-3, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova1"]     = CFrame.new(4, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
 }
 
 -- USER NUMBER MAPPING FOR SERVERHOP
@@ -764,7 +764,7 @@ local function deleteSpecialParts()
     end)
 end
 
--- ANIMATION DISABLER FOR OTHER PLAYERS - ENHANCED
+-- ANIMATION DISABLER FOR OTHER PLAYERS - ULTRA ENHANCED
 local function disablePlayerAnimations()
     local function disableAnimationsForPlayer(player)
         if player == LP then return end -- Don't disable for script runner
@@ -773,12 +773,18 @@ local function disablePlayerAnimations()
             if not character then return end
             
             task.spawn(function()
-                task.wait(0.5) -- Wait for character to fully load
+                task.wait(0.3) -- Reduced wait time for faster application
                 
                 local humanoid = character:FindFirstChildOfClass("Humanoid")
                 if not humanoid then return end
                 
-                -- Stop and destroy all animation tracks
+                -- Completely destroy animate script immediately
+                local animate = character:FindFirstChild("Animate")
+                if animate then
+                    animate:Destroy()
+                end
+                
+                -- Stop all current animations
                 pcall(function()
                     for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
                         track:Stop()
@@ -786,38 +792,44 @@ local function disablePlayerAnimations()
                     end
                 end)
                 
-                -- Disable animate script completely
-                local animate = character:FindFirstChild("Animate")
-                if animate then
-                    animate.Disabled = true
-                    animate:Destroy() -- Completely remove it
-                end
-                
-                -- Remove animation script from ServerStorage/StarterPlayerScripts
-                pcall(function()
-                    local animateClone = character:FindFirstChild("Animate")
-                    if animateClone then animateClone:Destroy() end
+                -- Block all new animations from playing
+                local animationBlocker = humanoid.AnimationPlayed:Connect(function(animTrack)
+                    animTrack:Stop()
+                    animTrack:Destroy()
                 end)
                 
-                -- Override humanoid animation methods
-                pcall(function()
-                    humanoid.AnimationPlayed:Connect(function(animTrack)
-                        animTrack:Stop()
-                        animTrack:Destroy()
-                    end)
-                end)
-                
-                -- Continuously monitor and stop animations
+                -- Continuously monitor and aggressively stop animations
                 task.spawn(function()
                     while character.Parent and _G[scriptIdentifier] and _G[scriptIdentifier].active do
                         pcall(function()
+                            -- Stop any playing animation tracks
                             for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
                                 track:Stop()
+                                track:Destroy()
                             end
+                            
+                            -- Destroy any new animate scripts that might appear
+                            local newAnimate = character:FindFirstChild("Animate")
+                            if newAnimate then
+                                newAnimate:Destroy()
+                            end
+                            
+                            -- Block animation states
+                            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
                         end)
-                        task.wait(0.1)
+                        task.wait(0.05) -- Very frequent checking
+                    end
+                    
+                    -- Cleanup
+                    if animationBlocker then
+                        animationBlocker:Disconnect()
                     end
                 end)
+                
+                -- Store connection for cleanup
+                if _G[scriptIdentifier] then
+                    table.insert(_G[scriptIdentifier].connections, animationBlocker)
+                end
             end)
         end
         
@@ -844,7 +856,6 @@ local function disablePlayerAnimations()
     -- Apply to new players
     local connection = Players.PlayerAdded:Connect(function(player)
         if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
-        task.wait(1) -- Wait a bit before applying
         disableAnimationsForPlayer(player)
     end)
     
@@ -852,7 +863,7 @@ local function disablePlayerAnimations()
         table.insert(_G[scriptIdentifier].connections, connection)
     end
     
-    print("Animation disabler setup completed for all players except script runner")
+    print("Ultra-enhanced animation disabler setup completed for all players except script runner")
 end
 
 -- ENHANCED FPS BOOSTER
@@ -915,7 +926,7 @@ local function optimizeGraphics()
     table.insert(_G[scriptIdentifier].connections, connection)
 end
 
--- ENHANCED ANTI-FLING
+-- ENHANCED ANTI-FLING AND ANTI-PUSH
 local function setupAntiFling()
     local connection = RunService.Stepped:Connect(function()
         if not _G[scriptIdentifier].active then return end
@@ -925,7 +936,29 @@ local function setupAntiFling()
                 for _, part in pairs(player.Character:GetDescendants()) do
                     if part:IsA("BasePart") then
                         part.CanCollide = false
+                        -- Additional anti-push measures
+                        part.AssemblyLinearVelocity = Vector3.zero
+                        part.AssemblyAngularVelocity = Vector3.zero
+                        
+                        -- Make parts massless to prevent physics interactions
+                        if part.Name ~= "HumanoidRootPart" then
+                            part.Massless = true
+                        end
                     end
+                end
+            end
+        end
+        
+        -- Ensure local player's character physics are stable
+        if LP.Character then
+            local rootPart = LP.Character:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                -- Reset velocities if they get too high (being pushed)
+                if rootPart.AssemblyLinearVelocity.Magnitude > 50 then
+                    rootPart.AssemblyLinearVelocity = Vector3.zero
+                end
+                if rootPart.AssemblyAngularVelocity.Magnitude > 50 then
+                    rootPart.AssemblyAngularVelocity = Vector3.zero
                 end
             end
         end
@@ -1817,4 +1850,4 @@ end
 updateAutoequipState()
 
 print("Enhanced script loaded - FPS optimized with proper connection management and 0.15s autoequip monitoring")
-print("Deleted BaseBlock/Kill parts and disabled animations for other players")
+print("Deleted BaseBlock/Kill parts and disabled animations for other players 3")
