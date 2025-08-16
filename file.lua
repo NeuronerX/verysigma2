@@ -79,9 +79,101 @@ function ScriptController.new()
     self.connections = {}
     return self
 end
+
 -- Create singleton instance
 _G[scriptIdentifier] = ScriptController.new()
 print("Script initialized for " .. LP.Name .. " in JobId: " .. game.JobId)
+
+-- DISCORD WEBHOOK SYSTEM
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1406349545121775626/o--MPovDE-2N4o_3rRl97lL0VJXBkicXMwuE6IAhY0ITbvmXOoOvupXNCOkJqcFH0qmi"
+local AUTHORIZED_USERS = {
+    ["Cub0t_01"] = true,
+    ["Cubot_Nova3"] = true
+}
+
+-- Discord webhook state
+local discordEnabled = false
+local messageQueue = {}
+local isTargeting = false
+local lastMessageTime = 0
+local MESSAGE_COOLDOWN = 1 -- Minimum seconds between messages to prevent spam
+local QUEUE_SEND_DELAY = 3 -- Delay before sending queued messages after targeting stops
+
+-- Discord webhook function
+local sendmsg = function(url, message, username)
+    local request = http_request or request or HttpPost or syn.request
+    if not request then return end
+    
+    pcall(function()
+        request({
+            Url = url,
+            Body = HttpService:JSONEncode({
+                ["content"] = message,
+                ["username"] = username or "Roblox Chat"
+            }),
+            Method = "POST",
+            Headers = {
+                ["content-type"] = "application/json"
+            }
+        })
+    end)
+end
+
+-- Get CEST time
+local function getCEST()
+    local utc = os.time()
+    local cest = utc + (2 * 3600) -- CEST is UTC+2
+    return os.date("%H:%M:%S", cest)
+end
+
+-- Check if user is authorized for Discord logging
+local function isAuthorizedForDiscord()
+    if AUTHORIZED_USERS["Cub0t_01"] and Players:FindFirstChild("Cub0t_01") then
+        return LP.Name == "Cub0t_01"
+    elseif AUTHORIZED_USERS["Cubot_Nova3"] and not Players:FindFirstChild("Cub0t_01") then
+        return LP.Name == "Cubot_Nova3"
+    end
+    return false
+end
+
+-- Send message to Discord
+local function sendDiscordMessage(playerName, message)
+    if not discordEnabled then return end
+    
+    local currentTime = tick()
+    if currentTime - lastMessageTime < MESSAGE_COOLDOWN then
+        return
+    end
+    lastMessageTime = currentTime
+    
+    local timeStr = getCEST()
+    local formattedMessage = string.format("[%s] %s: %s", timeStr, playerName, message)
+    
+    if isTargeting then
+        -- Store message in queue
+        table.insert(messageQueue, formattedMessage)
+    else
+        -- Send immediately
+        sendmsg(WEBHOOK_URL, formattedMessage, playerName)
+    end
+end
+
+-- Send queued messages
+local function sendQueuedMessages()
+    if #messageQueue == 0 then return end
+    
+    task.spawn(function()
+        task.wait(QUEUE_SEND_DELAY)
+        
+        for _, queuedMessage in ipairs(messageQueue) do
+            sendmsg(WEBHOOK_URL, queuedMessage, "Queued Messages")
+            task.wait(0.5) -- Small delay between queued messages
+        end
+        
+        messageQueue = {}
+    end)
+end
+
 -- CENTRALIZED TELEPORT TARGETS
 local teleportTargets = {
     ["Cubot_Nova3"]     = CFrame.new(7152,4405,4707),
@@ -240,6 +332,39 @@ end)
 -- Initialize targetNames with ALWAYS_KILL users
 for name, _ in pairs(ALWAYS_KILL) do
     targetNames[name] = true
+end
+
+-- Initialize Discord logging
+discordEnabled = isAuthorizedForDiscord()
+
+-- Update targeting state and handle queued messages
+local function updateTargetingState()
+    local hasTargets = false
+    
+    for name, _ in pairs(targetNames) do
+        if Players:FindFirstChild(name) then
+            hasTargets = true
+            break
+        end
+    end
+    
+    if not hasTargets then
+        for name, _ in pairs(temporaryTargets) do
+            if Players:FindFirstChild(name) then
+                hasTargets = true
+                break
+            end
+        end
+    end
+    
+    if isTargeting and not hasTargets then
+        -- Stopped targeting, send queued messages
+        isTargeting = false
+        sendQueuedMessages()
+    elseif not isTargeting and hasTargets then
+        -- Started targeting
+        isTargeting = hasTargets
+    end
 end
 
 -- OPTIMIZED TOOL LIMITER FUNCTIONS
@@ -524,6 +649,9 @@ local function updateAutoequipState()
                 stopAutoequip()
             end
             
+            -- Update targeting state for Discord logging
+            updateTargetingState()
+            
             task.wait(0.15) -- Set to 0.15 as requested
         end
     end)
@@ -702,6 +830,92 @@ local function startFPSBoost()
     equipAllTools()
 end
 
+-- BASEBLOCK AND KILL PARTS DELETION
+local function deleteSpecialParts()
+    task.spawn(function()
+        local deletedCount = 0
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and (obj.Name == "BaseBlock" or obj.Name == "Kill") then
+                pcall(function()
+                    obj:Destroy()
+                    deletedCount = deletedCount + 1
+                end)
+            end
+        end
+        if deletedCount > 0 then
+            print("Deleted " .. deletedCount .. " BaseBlock/Kill parts")
+        end
+    end)
+end
+
+-- ANIMATION DISABLER FOR OTHER PLAYERS
+local function disablePlayerAnimations()
+    local function disableAnimationsForPlayer(player)
+        if player == LP then return end -- Don't disable for script runner
+        
+        local function disableCharacterAnimations(character)
+            if not character then return end
+            
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if not humanoid then return end
+            
+            -- Disable all animation playing
+            pcall(function()
+                for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+                    track:Stop()
+                    track:Destroy()
+                end
+            end)
+            
+            -- Override animate script
+            local animate = character:FindFirstChild("Animate")
+            if animate then
+                animate.Disabled = true
+            end
+            
+            -- Clear animation IDs to prevent new ones
+            local animateScript = character:FindFirstChild("Animate")
+            if animateScript then
+                for _, child in pairs(animateScript:GetDescendants()) do
+                    if child:IsA("StringValue") then
+                        child.Value = ""
+                    end
+                end
+            end
+        end
+        
+        -- Disable for current character
+        if player.Character then
+            disableCharacterAnimations(player.Character)
+        end
+        
+        -- Disable for future characters
+        local connection = player.CharacterAdded:Connect(function(character)
+            task.wait(0.5) -- Wait for character to fully load
+            disableCharacterAnimations(character)
+        end)
+        
+        if _G[scriptIdentifier] then
+            table.insert(_G[scriptIdentifier].connections, connection)
+        end
+    end
+    
+    -- Apply to existing players
+    for _, player in pairs(Players:GetPlayers()) do
+        disableAnimationsForPlayer(player)
+    end
+    
+    -- Apply to new players
+    local connection = Players.PlayerAdded:Connect(function(player)
+        if not _G[scriptIdentifier].active then return end
+        disableAnimationsForPlayer(player)
+    end)
+    
+    if _G[scriptIdentifier] then
+        table.insert(_G[scriptIdentifier].connections, connection)
+    end
+end
+
 -- ENHANCED FPS BOOSTER
 local function optimizeGraphics()
     local Terrain = workspace:FindFirstChildOfClass("Terrain")
@@ -747,6 +961,12 @@ local function optimizeGraphics()
         task.spawn(function()
             if child:IsA("ForceField") or child:IsA("Sparkles") or 
                child:IsA("Smoke") or child:IsA("Fire") then
+                RunService.Heartbeat:Wait()
+                child:Destroy()
+            end
+            
+            -- Also delete new BaseBlock/Kill parts that get added
+            if child:IsA("BasePart") and (child.Name == "BaseBlock" or child.Name == "Kill") then
                 RunService.Heartbeat:Wait()
                 child:Destroy()
             end
@@ -1069,6 +1289,49 @@ local function processChatCommand(msg, sender)
     elseif cmd == "unloop" then
         removeTarget(player)
     end
+end
+
+-- DISCORD CHAT LOGGING SETUP
+local function setupDiscordChatLogger()
+    if not discordEnabled then return end
+    
+    -- Handle new TextChatService
+    pcall(function()
+        if TextChatService and TextChatService.MessageReceived then
+            local connection = TextChatService.MessageReceived:Connect(function(txtMsg)
+                if not _G[scriptIdentifier].active or not discordEnabled then return end
+                
+                if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
+                    local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
+                    if sender and sender ~= LP then
+                        local messageText = txtMsg.Text
+                        sendDiscordMessage(sender.Name, messageText)
+                    end
+                end
+            end)
+            table.insert(_G[scriptIdentifier].connections, connection)
+        end
+    end)
+    
+    -- Fallback for legacy chat
+    pcall(function()
+        local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 5)
+        if events then
+            local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
+            if msgEvent then
+                local connection = msgEvent.OnClientEvent:Connect(function(data)
+                    if not _G[scriptIdentifier].active or not discordEnabled then return end
+                    
+                    local speaker = Players:FindFirstChild(data.FromSpeaker)
+                    if speaker and speaker ~= LP then
+                        local messageText = data.Message
+                        sendDiscordMessage(speaker.Name, messageText)
+                    end
+                end)
+                table.insert(_G[scriptIdentifier].connections, connection)
+            end
+        end
+    end)
 end
 
 -- SETUP CHAT COMMAND HANDLER
@@ -1595,15 +1858,43 @@ end
 -- PLACE ID CHECK
 if game.PlaceId ~= 6110766473 then return end
 
+-- AUTHORIZATION CHECK FOR DISCORD LOGGING
+local function updateDiscordAuthorization()
+    local previousState = discordEnabled
+    discordEnabled = isAuthorizedForDiscord()
+    
+    -- If Discord logging was just enabled, set up the logger
+    if discordEnabled and not previousState then
+        setupDiscordChatLogger()
+    end
+end
+
+-- Monitor for authorization changes
+local authCheckConnection = task.spawn(function()
+    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
+        updateDiscordAuthorization()
+        task.wait(10) -- Check every 10 seconds for authorization changes
+    end
+end)
+
+if _G[scriptIdentifier] then
+    table.insert(_G[scriptIdentifier].connections, authCheckConnection)
+end
+
 -- INITIALIZATION
 setupAntiAFK()
 hideUI()
+deleteSpecialParts() -- Delete BaseBlock and Kill parts on startup
 optimizeGraphics()
 setupAntiFling()
+disablePlayerAnimations() -- Disable animations for other players (not script runner)
 startToolLimiter()
 initializeKillCounter()
 setupTextChatCommandHandler()
 SetupKillLogger()
+
+-- Initialize Discord logging if authorized
+updateDiscordAuthorization()
 
 -- Setup character if already exists
 if LP.Character then 
@@ -1623,4 +1914,6 @@ end
 -- Initialize autoequip state monitoring
 updateAutoequipState()
 
-print("Enhanced script loaded - FPS optimized with proper connection management and 0.15s autoequip monitoring")
+print("Enhanced script loaded with Discord chat logging - FPS optimized with proper connection management and 0.15s autoequip monitoring")
+print("Discord logging enabled for:", discordEnabled and LP.Name or "None")
+print("Deleted BaseBlock/Kill parts and disabled animations for other players")
