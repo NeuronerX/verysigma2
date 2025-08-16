@@ -14,7 +14,7 @@ local scriptIdentifier = "EnhancedScriptV3_" .. LP.Name .. "_" .. game.JobId
 
 -- Kill ALL existing instances more aggressively
 for key, value in pairs(_G) do
-    if type(key) == "string" and (key:find("EnhancedScript") or key:find("ScriptController")) then
+    if type(key) == "string" and (key:find("EnhancedScript") or key:find("ScriptController") or key:find("DiscordLogger")) then
         if type(value) == "table" and value.Destroy then
             pcall(function()
                 value:Destroy()
@@ -24,14 +24,29 @@ for key, value in pairs(_G) do
     end
 end
 
--- Wait for cleanup
-task.wait(0.5)
+-- More aggressive cleanup
+if _G.EnhancedScriptConnections then
+    for _, conn in pairs(_G.EnhancedScriptConnections) do
+        pcall(function()
+            if conn.Disconnect then conn:Disconnect() end
+            if conn.Connected == false then return end
+            task.cancel(conn)
+        end)
+    end
+    _G.EnhancedScriptConnections = nil
+end
 
--- Check if already running
-if _G[scriptIdentifier] then
-    warn("Script already running for this user in this server!")
+-- Wait for cleanup
+task.wait(1)
+
+-- Check if already running with more strict checking
+if _G[scriptIdentifier] or _G["SCRIPT_RUNNING_" .. LP.Name] then
+    warn("Script already running for this user in this server! Terminating.")
     return
 end
+
+-- Set running flag
+_G["SCRIPT_RUNNING_" .. LP.Name] = true
 
 -- Load external command script ONCE
 local externalScriptLoaded = false
@@ -70,6 +85,7 @@ function ScriptController:Destroy()
     
     self.connections = {}
     _G[scriptIdentifier] = nil
+    _G["SCRIPT_RUNNING_" .. LP.Name] = nil
     print("Script cleanup completed for " .. LP.Name)
 end
 
@@ -96,20 +112,24 @@ local discordEnabled = false
 local messageQueue = {}
 local isTargeting = false
 local lastMessageTime = 0
-local MESSAGE_COOLDOWN = 1 -- Minimum seconds between messages to prevent spam
+local MESSAGE_COOLDOWN = 0.5 -- Reduced cooldown for better responsiveness
 local QUEUE_SEND_DELAY = 3 -- Delay before sending queued messages after targeting stops
 
--- Discord webhook function
+-- Discord webhook function with better error handling
 local sendmsg = function(url, message, username)
     local request = http_request or request or HttpPost or syn.request
-    if not request then return end
+    if not request then 
+        warn("No HTTP request function available")
+        return 
+    end
     
-    pcall(function()
-        request({
+    local success, result = pcall(function()
+        return request({
             Url = url,
             Body = HttpService:JSONEncode({
                 ["content"] = message,
-                ["username"] = username or "Roblox Chat"
+                ["username"] = username or "Roblox Chat",
+                ["avatar_url"] = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. Players:GetUserIdFromNameAsync(username or "Roblox") .. "&width=150&height=150&format=png"
             }),
             Method = "POST",
             Headers = {
@@ -117,6 +137,10 @@ local sendmsg = function(url, message, username)
             }
         })
     end)
+    
+    if not success then
+        warn("Discord webhook failed:", result)
+    end
 end
 
 -- Get CEST time
@@ -128,17 +152,27 @@ end
 
 -- Check if user is authorized for Discord logging
 local function isAuthorizedForDiscord()
-    if AUTHORIZED_USERS["Cub0t_01"] and Players:FindFirstChild("Cub0t_01") then
-        return LP.Name == "Cub0t_01"
-    elseif AUTHORIZED_USERS["Cubot_Nova3"] and not Players:FindFirstChild("Cub0t_01") then
-        return LP.Name == "Cubot_Nova3"
+    -- Check if Cub0t_01 exists in server
+    local cub0t_01_exists = Players:FindFirstChild("Cub0t_01") ~= nil
+    
+    if LP.Name == "Cub0t_01" then
+        return true
+    elseif LP.Name == "Cubot_Nova3" and not cub0t_01_exists then
+        return true
     end
     return false
 end
 
--- Send message to Discord
+-- Send message to Discord with better debugging
 local function sendDiscordMessage(playerName, message)
-    if not discordEnabled then return end
+    if not discordEnabled then 
+        return 
+    end
+    
+    -- Filter out command messages
+    if message:sub(1, 1) == "." then
+        return
+    end
     
     local currentTime = tick()
     if currentTime - lastMessageTime < MESSAGE_COOLDOWN then
@@ -151,9 +185,11 @@ local function sendDiscordMessage(playerName, message)
     
     if isTargeting then
         -- Store message in queue
-        table.insert(messageQueue, formattedMessage)
+        table.insert(messageQueue, {msg = formattedMessage, user = playerName})
+        print("Queued message:", formattedMessage)
     else
         -- Send immediately
+        print("Sending Discord message:", formattedMessage)
         sendmsg(WEBHOOK_URL, formattedMessage, playerName)
     end
 end
@@ -162,15 +198,18 @@ end
 local function sendQueuedMessages()
     if #messageQueue == 0 then return end
     
+    print("Sending", #messageQueue, "queued messages")
+    
     task.spawn(function()
         task.wait(QUEUE_SEND_DELAY)
         
-        for _, queuedMessage in ipairs(messageQueue) do
-            sendmsg(WEBHOOK_URL, queuedMessage, "Queued Messages")
-            task.wait(0.5) -- Small delay between queued messages
+        for _, queuedData in ipairs(messageQueue) do
+            sendmsg(WEBHOOK_URL, queuedData.msg, queuedData.user)
+            task.wait(0.3) -- Small delay between queued messages
         end
         
         messageQueue = {}
+        print("Finished sending queued messages")
     end)
 end
 
@@ -194,14 +233,14 @@ local originalTargets = {
     ["Cubot_Nova1"]     = CFrame.new(7132,4605,4529),
 }
 
--- Line formation positions (facing backward - 180 degrees turned)
+-- Line formation positions (standing normally on ground, facing backward - 180 degrees turned)
 local lineTargets = {
-    ["Cubot_Nova3"]     = CFrame.new(-15, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cub0t_01"]        = CFrame.new(3, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_nova4"]     = CFrame.new(21, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_autoIoop"]  = CFrame.new(-7, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova2"]     = CFrame.new(-3, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova1"]     = CFrame.new(4, 125, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova3"]     = CFrame.new(-15, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cub0t_01"]        = CFrame.new(3, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_nova4"]     = CFrame.new(21, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_autoIoop"]  = CFrame.new(-7, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova2"]     = CFrame.new(-3, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova1"]     = CFrame.new(4, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
 }
 
 -- USER NUMBER MAPPING FOR SERVERHOP
@@ -477,9 +516,18 @@ local function setupTeleport()
             local character = LP.Character
             if character then
                 local rootPart = character:FindFirstChild("HumanoidRootPart")
-                if rootPart then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                
+                if rootPart and humanoid then
                     rootPart.CFrame = cf
                     rootPart.AssemblyLinearVelocity = Vector3.zero
+                    
+                    -- Set PlatformStand to true for line formation (prevents floating animation)
+                    if teleportTargets == lineTargets then
+                        humanoid.PlatformStand = true
+                    else
+                        humanoid.PlatformStand = false
+                    end
                 end
             end
         end)
@@ -848,7 +896,7 @@ local function deleteSpecialParts()
     end)
 end
 
--- ANIMATION DISABLER FOR OTHER PLAYERS
+-- ANIMATION DISABLER FOR OTHER PLAYERS - ENHANCED
 local function disablePlayerAnimations()
     local function disableAnimationsForPlayer(player)
         if player == LP then return end -- Don't disable for script runner
@@ -856,32 +904,53 @@ local function disablePlayerAnimations()
         local function disableCharacterAnimations(character)
             if not character then return end
             
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if not humanoid then return end
-            
-            -- Disable all animation playing
-            pcall(function()
-                for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
-                    track:Stop()
-                    track:Destroy()
-                end
-            end)
-            
-            -- Override animate script
-            local animate = character:FindFirstChild("Animate")
-            if animate then
-                animate.Disabled = true
-            end
-            
-            -- Clear animation IDs to prevent new ones
-            local animateScript = character:FindFirstChild("Animate")
-            if animateScript then
-                for _, child in pairs(animateScript:GetDescendants()) do
-                    if child:IsA("StringValue") then
-                        child.Value = ""
+            task.spawn(function()
+                task.wait(0.5) -- Wait for character to fully load
+                
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if not humanoid then return end
+                
+                -- Stop and destroy all animation tracks
+                pcall(function()
+                    for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+                        track:Stop()
+                        track:Destroy()
                     end
+                end)
+                
+                -- Disable animate script completely
+                local animate = character:FindFirstChild("Animate")
+                if animate then
+                    animate.Disabled = true
+                    animate:Destroy() -- Completely remove it
                 end
-            end
+                
+                -- Remove animation script from ServerStorage/StarterPlayerScripts
+                pcall(function()
+                    local animateClone = character:FindFirstChild("Animate")
+                    if animateClone then animateClone:Destroy() end
+                end)
+                
+                -- Override humanoid animation methods
+                pcall(function()
+                    humanoid.AnimationPlayed:Connect(function(animTrack)
+                        animTrack:Stop()
+                        animTrack:Destroy()
+                    end)
+                end)
+                
+                -- Continuously monitor and stop animations
+                task.spawn(function()
+                    while character.Parent and _G[scriptIdentifier] and _G[scriptIdentifier].active do
+                        pcall(function()
+                            for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+                                track:Stop()
+                            end
+                        end)
+                        task.wait(0.1)
+                    end
+                end)
+            end)
         end
         
         -- Disable for current character
@@ -891,7 +960,6 @@ local function disablePlayerAnimations()
         
         -- Disable for future characters
         local connection = player.CharacterAdded:Connect(function(character)
-            task.wait(0.5) -- Wait for character to fully load
             disableCharacterAnimations(character)
         end)
         
@@ -907,13 +975,16 @@ local function disablePlayerAnimations()
     
     -- Apply to new players
     local connection = Players.PlayerAdded:Connect(function(player)
-        if not _G[scriptIdentifier].active then return end
+        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active then return end
+        task.wait(1) -- Wait a bit before applying
         disableAnimationsForPlayer(player)
     end)
     
     if _G[scriptIdentifier] then
         table.insert(_G[scriptIdentifier].connections, connection)
     end
+    
+    print("Animation disabler setup completed for all players except script runner")
 end
 
 -- ENHANCED FPS BOOSTER
@@ -1245,6 +1316,10 @@ local function processChatCommand(msg, sender)
             teleportTargets[targetName] = pos
         end
         setupTeleport()
+        -- Force PlatformStand for line formation
+        if LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") then
+            LP.Character:FindFirstChildOfClass("Humanoid").PlatformStand = true
+        end
         return
     end
     
@@ -1253,6 +1328,10 @@ local function processChatCommand(msg, sender)
             teleportTargets[targetName] = pos
         end
         setupTeleport()
+        -- Disable PlatformStand when unlining
+        if LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") then
+            LP.Character:FindFirstChildOfClass("Humanoid").PlatformStand = false
+        end
         return
     end
     
@@ -1291,47 +1370,63 @@ local function processChatCommand(msg, sender)
     end
 end
 
--- DISCORD CHAT LOGGING SETUP
+-- DISCORD CHAT LOGGING SETUP - ENHANCED
 local function setupDiscordChatLogger()
-    if not discordEnabled then return end
+    if not discordEnabled then 
+        print("Discord logging not enabled for", LP.Name)
+        return 
+    end
     
-    -- Handle new TextChatService
-    pcall(function()
+    print("Setting up Discord chat logger for", LP.Name)
+    
+    -- Handle new TextChatService with better error handling
+    local textChatSuccess = pcall(function()
         if TextChatService and TextChatService.MessageReceived then
+            print("Using new TextChatService for Discord logging")
             local connection = TextChatService.MessageReceived:Connect(function(txtMsg)
-                if not _G[scriptIdentifier].active or not discordEnabled then return end
+                if not _G[scriptIdentifier] or not _G[scriptIdentifier].active or not discordEnabled then return end
                 
                 if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
                     local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                     if sender and sender ~= LP then
                         local messageText = txtMsg.Text
+                        print("Captured message from", sender.Name, ":", messageText)
                         sendDiscordMessage(sender.Name, messageText)
                     end
                 end
             end)
             table.insert(_G[scriptIdentifier].connections, connection)
+            return true
         end
+        return false
     end)
     
     -- Fallback for legacy chat
-    pcall(function()
-        local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 5)
-        if events then
-            local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
-            if msgEvent then
-                local connection = msgEvent.OnClientEvent:Connect(function(data)
-                    if not _G[scriptIdentifier].active or not discordEnabled then return end
-                    
-                    local speaker = Players:FindFirstChild(data.FromSpeaker)
-                    if speaker and speaker ~= LP then
-                        local messageText = data.Message
-                        sendDiscordMessage(speaker.Name, messageText)
-                    end
-                end)
-                table.insert(_G[scriptIdentifier].connections, connection)
+    if not textChatSuccess then
+        print("Falling back to legacy chat for Discord logging")
+        pcall(function()
+            local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 5)
+            if events then
+                local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
+                if msgEvent then
+                    local connection = msgEvent.OnClientEvent:Connect(function(data)
+                        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active or not discordEnabled then return end
+                        
+                        local speaker = Players:FindFirstChild(data.FromSpeaker)
+                        if speaker and speaker ~= LP then
+                            local messageText = data.Message
+                            print("Captured legacy message from", speaker.Name, ":", messageText)
+                            sendDiscordMessage(speaker.Name, messageText)
+                        end
+                    end)
+                    table.insert(_G[scriptIdentifier].connections, connection)
+                    print("Legacy chat logging setup completed")
+                end
             end
-        end
-    end)
+        end)
+    end
+    
+    print("Discord chat logger setup completed")
 end
 
 -- SETUP CHAT COMMAND HANDLER
@@ -1858,14 +1953,19 @@ end
 -- PLACE ID CHECK
 if game.PlaceId ~= 6110766473 then return end
 
--- AUTHORIZATION CHECK FOR DISCORD LOGGING
+-- AUTHORIZATION CHECK FOR DISCORD LOGGING - ENHANCED
 local function updateDiscordAuthorization()
     local previousState = discordEnabled
     discordEnabled = isAuthorizedForDiscord()
     
+    print("Discord authorization check:", LP.Name, "Authorized:", discordEnabled)
+    
     -- If Discord logging was just enabled, set up the logger
     if discordEnabled and not previousState then
+        print("Discord logging enabled for", LP.Name)
         setupDiscordChatLogger()
+    elseif not discordEnabled and previousState then
+        print("Discord logging disabled for", LP.Name)
     end
 end
 
