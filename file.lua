@@ -100,119 +100,6 @@ end
 _G[scriptIdentifier] = ScriptController.new()
 print("Script initialized for " .. LP.Name .. " in JobId: " .. game.JobId)
 
--- DISCORD WEBHOOK SYSTEM
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1406349545121775626/o--MPovDE-2N4o_3rRl97lL0VJXBkicXMwuE6IAhY0ITbvmXOoOvupXNCOkJqcFH0qmi"
-local AUTHORIZED_USERS = {
-    ["Cub0t_01"] = true,
-    ["Cubot_Nova3"] = true
-}
-
--- Discord webhook state
-local discordEnabled = false
-local messageQueue = {}
-local isTargeting = false
-local lastMessageTime = 0
-local MESSAGE_COOLDOWN = 0.5 -- Reduced cooldown for better responsiveness
-local QUEUE_SEND_DELAY = 3 -- Delay before sending queued messages after targeting stops
-
--- Discord webhook function with better error handling
-local sendmsg = function(url, message, username)
-    local request = http_request or request or HttpPost or syn.request
-    if not request then 
-        warn("No HTTP request function available")
-        return 
-    end
-    
-    local success, result = pcall(function()
-        return request({
-            Url = url,
-            Body = HttpService:JSONEncode({
-                ["content"] = message,
-                ["username"] = username or "Roblox Chat",
-                ["avatar_url"] = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. Players:GetUserIdFromNameAsync(username or "Roblox") .. "&width=150&height=150&format=png"
-            }),
-            Method = "POST",
-            Headers = {
-                ["content-type"] = "application/json"
-            }
-        })
-    end)
-    
-    if not success then
-        warn("Discord webhook failed:", result)
-    end
-end
-
--- Get CEST time
-local function getCEST()
-    local utc = os.time()
-    local cest = utc + (2 * 3600) -- CEST is UTC+2
-    return os.date("%H:%M:%S", cest)
-end
-
--- Check if user is authorized for Discord logging
-local function isAuthorizedForDiscord()
-    -- Check if Cub0t_01 exists in server
-    local cub0t_01_exists = Players:FindFirstChild("Cub0t_01") ~= nil
-    
-    if LP.Name == "Cub0t_01" then
-        return true
-    elseif LP.Name == "Cubot_Nova3" and not cub0t_01_exists then
-        return true
-    end
-    return false
-end
-
--- Send message to Discord with better debugging
-local function sendDiscordMessage(playerName, message)
-    if not discordEnabled then 
-        return 
-    end
-    
-    -- Filter out command messages
-    if message:sub(1, 1) == "." then
-        return
-    end
-    
-    local currentTime = tick()
-    if currentTime - lastMessageTime < MESSAGE_COOLDOWN then
-        return
-    end
-    lastMessageTime = currentTime
-    
-    local timeStr = getCEST()
-    local formattedMessage = string.format("[%s] %s: %s", timeStr, playerName, message)
-    
-    if isTargeting then
-        -- Store message in queue
-        table.insert(messageQueue, {msg = formattedMessage, user = playerName})
-        print("Queued message:", formattedMessage)
-    else
-        -- Send immediately
-        print("Sending Discord message:", formattedMessage)
-        sendmsg(WEBHOOK_URL, formattedMessage, playerName)
-    end
-end
-
--- Send queued messages
-local function sendQueuedMessages()
-    if #messageQueue == 0 then return end
-    
-    print("Sending", #messageQueue, "queued messages")
-    
-    task.spawn(function()
-        task.wait(QUEUE_SEND_DELAY)
-        
-        for _, queuedData in ipairs(messageQueue) do
-            sendmsg(WEBHOOK_URL, queuedData.msg, queuedData.user)
-            task.wait(0.3) -- Small delay between queued messages
-        end
-        
-        messageQueue = {}
-        print("Finished sending queued messages")
-    end)
-end
-
 -- CENTRALIZED TELEPORT TARGETS
 local teleportTargets = {
     ["Cubot_Nova3"]     = CFrame.new(7152,4405,4707),
@@ -235,12 +122,12 @@ local originalTargets = {
 
 -- Line formation positions (standing normally on ground, facing backward - 180 degrees turned)
 local lineTargets = {
-    ["Cubot_Nova3"]     = CFrame.new(-15, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cub0t_01"]        = CFrame.new(3, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_nova4"]     = CFrame.new(21, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_autoIoop"]  = CFrame.new(-7, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova2"]     = CFrame.new(-3, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova1"]     = CFrame.new(4, 123.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova3"]     = CFrame.new(-15, 133.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cub0t_01"]        = CFrame.new(3, 133.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_nova4"]     = CFrame.new(21, 133.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_autoIoop"]  = CFrame.new(-7, 133.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova2"]     = CFrame.new(-3, 133.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova1"]     = CFrame.new(4, 133.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
 }
 
 -- USER NUMBER MAPPING FOR SERVERHOP
@@ -373,37 +260,9 @@ for name, _ in pairs(ALWAYS_KILL) do
     targetNames[name] = true
 end
 
--- Initialize Discord logging
-discordEnabled = isAuthorizedForDiscord()
-
--- Update targeting state and handle queued messages
+-- Update targeting state for autoequip monitoring
 local function updateTargetingState()
-    local hasTargets = false
-    
-    for name, _ in pairs(targetNames) do
-        if Players:FindFirstChild(name) then
-            hasTargets = true
-            break
-        end
-    end
-    
-    if not hasTargets then
-        for name, _ in pairs(temporaryTargets) do
-            if Players:FindFirstChild(name) then
-                hasTargets = true
-                break
-            end
-        end
-    end
-    
-    if isTargeting and not hasTargets then
-        -- Stopped targeting, send queued messages
-        isTargeting = false
-        sendQueuedMessages()
-    elseif not isTargeting and hasTargets then
-        -- Started targeting
-        isTargeting = hasTargets
-    end
+    -- No longer needed for Discord, but keep for other functionality if needed
 end
 
 -- OPTIMIZED TOOL LIMITER FUNCTIONS
@@ -522,8 +381,17 @@ local function setupTeleport()
                     rootPart.CFrame = cf
                     rootPart.AssemblyLinearVelocity = Vector3.zero
                     
-                    -- Set PlatformStand to true for line formation (prevents floating animation)
-                    if teleportTargets == lineTargets then
+                    -- Check if current teleport target is in lineTargets
+                    local isInLineFormation = false
+                    for name, lineCF in pairs(lineTargets) do
+                        if name == LP.Name and cf == lineCF then
+                            isInLineFormation = true
+                            break
+                        end
+                    end
+                    
+                    -- Force PlatformStand for line formation
+                    if isInLineFormation then
                         humanoid.PlatformStand = true
                     else
                         humanoid.PlatformStand = false
@@ -697,7 +565,7 @@ local function updateAutoequipState()
                 stopAutoequip()
             end
             
-            -- Update targeting state for Discord logging
+            -- Update targeting state for other functionality
             updateTargetingState()
             
             task.wait(0.15) -- Set to 0.15 as requested
@@ -1370,64 +1238,8 @@ local function processChatCommand(msg, sender)
     end
 end
 
--- DISCORD CHAT LOGGING SETUP - ENHANCED
-local function setupDiscordChatLogger()
-    if not discordEnabled then 
-        print("Discord logging not enabled for", LP.Name)
-        return 
-    end
-    
-    print("Setting up Discord chat logger for", LP.Name)
-    
-    -- Handle new TextChatService with better error handling
-    local textChatSuccess = pcall(function()
-        if TextChatService and TextChatService.MessageReceived then
-            print("Using new TextChatService for Discord logging")
-            local connection = TextChatService.MessageReceived:Connect(function(txtMsg)
-                if not _G[scriptIdentifier] or not _G[scriptIdentifier].active or not discordEnabled then return end
-                
-                if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
-                    local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
-                    if sender and sender ~= LP then
-                        local messageText = txtMsg.Text
-                        print("Captured message from", sender.Name, ":", messageText)
-                        sendDiscordMessage(sender.Name, messageText)
-                    end
-                end
-            end)
-            table.insert(_G[scriptIdentifier].connections, connection)
-            return true
-        end
-        return false
-    end)
-    
-    -- Fallback for legacy chat
-    if not textChatSuccess then
-        print("Falling back to legacy chat for Discord logging")
-        pcall(function()
-            local events = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 5)
-            if events then
-                local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
-                if msgEvent then
-                    local connection = msgEvent.OnClientEvent:Connect(function(data)
-                        if not _G[scriptIdentifier] or not _G[scriptIdentifier].active or not discordEnabled then return end
-                        
-                        local speaker = Players:FindFirstChild(data.FromSpeaker)
-                        if speaker and speaker ~= LP then
-                            local messageText = data.Message
-                            print("Captured legacy message from", speaker.Name, ":", messageText)
-                            sendDiscordMessage(speaker.Name, messageText)
-                        end
-                    end)
-                    table.insert(_G[scriptIdentifier].connections, connection)
-                    print("Legacy chat logging setup completed")
-                end
-            end
-        end)
-    end
-    
-    print("Discord chat logger setup completed")
-end
+-- DISCORD CHAT LOGGING SETUP - REMOVED
+-- Discord functionality completely removed
 
 -- SETUP CHAT COMMAND HANDLER
 local function setupTextChatCommandHandler()
@@ -1634,7 +1446,7 @@ local function MH(toolPart, player)
     end
 end
 
--- ENHANCED HEARTBEAT FUNCTION
+-- ENHANCED HEARTBEAT FUNCTION (NO FRIENDLY FIRE)
 local function HB()
     if not oldScriptActive or not _G[scriptIdentifier].active then return end
     
@@ -1650,6 +1462,11 @@ local function HB()
 
     for _, player in pairs(targetList) do
         if player and player.Parent and player.Character then
+            -- PREVENT FRIENDLY FIRE - Don't attack MAIN_USERS or SIGMA_USERS
+            if MAIN_USERS[player.Name] or SIGMA_USERS[player.Name] or WHITELISTED_USERS[player.Name] then
+                continue -- Skip this player
+            end
+            
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
             
@@ -1789,6 +1606,22 @@ local function SetupChar(character)
         end
         
         setupTeleport()
+        
+        -- Force PlatformStand on respawn if in line formation
+        task.spawn(function()
+            task.wait(1) -- Wait for character to fully load
+            local isInLineFormation = false
+            for name, lineCF in pairs(lineTargets) do
+                if name == LP.Name and teleportTargets[LP.Name] == lineCF then
+                    isInLineFormation = true
+                    break
+                end
+            end
+            
+            if isInLineFormation and humanoid then
+                humanoid.PlatformStand = true
+            end
+        end)
         
         if autoactivate and not isActivated then
             task.spawn(function()
@@ -1953,34 +1786,6 @@ end
 -- PLACE ID CHECK
 if game.PlaceId ~= 6110766473 then return end
 
--- AUTHORIZATION CHECK FOR DISCORD LOGGING - ENHANCED
-local function updateDiscordAuthorization()
-    local previousState = discordEnabled
-    discordEnabled = isAuthorizedForDiscord()
-    
-    print("Discord authorization check:", LP.Name, "Authorized:", discordEnabled)
-    
-    -- If Discord logging was just enabled, set up the logger
-    if discordEnabled and not previousState then
-        print("Discord logging enabled for", LP.Name)
-        setupDiscordChatLogger()
-    elseif not discordEnabled and previousState then
-        print("Discord logging disabled for", LP.Name)
-    end
-end
-
--- Monitor for authorization changes
-local authCheckConnection = task.spawn(function()
-    while _G[scriptIdentifier] and _G[scriptIdentifier].active do
-        updateDiscordAuthorization()
-        task.wait(10) -- Check every 10 seconds for authorization changes
-    end
-end)
-
-if _G[scriptIdentifier] then
-    table.insert(_G[scriptIdentifier].connections, authCheckConnection)
-end
-
 -- INITIALIZATION
 setupAntiAFK()
 hideUI()
@@ -1992,9 +1797,6 @@ startToolLimiter()
 initializeKillCounter()
 setupTextChatCommandHandler()
 SetupKillLogger()
-
--- Initialize Discord logging if authorized
-updateDiscordAuthorization()
 
 -- Setup character if already exists
 if LP.Character then 
@@ -2014,6 +1816,5 @@ end
 -- Initialize autoequip state monitoring
 updateAutoequipState()
 
-print("Enhanced script loaded with Discord chat logging - FPS optimized with proper connection management and 0.15s autoequip monitoring")
-print("Discord logging enabled for:", discordEnabled and LP.Name or "None")
+print("Enhanced script loaded - FPS optimized with proper connection management and 0.15s autoequip monitoring")
 print("Deleted BaseBlock/Kill parts and disabled animations for other players")
