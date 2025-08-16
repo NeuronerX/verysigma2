@@ -122,12 +122,12 @@ local originalTargets = {
 
 -- Line formation positions (standing normally on ground, facing backward - 180 degrees turned)
 local lineTargets = {
-    ["Cubot_Nova3"]     = CFrame.new(-15, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cub0t_01"]        = CFrame.new(3, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_nova4"]     = CFrame.new(21, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["cubot_autoIoop"]  = CFrame.new(-7, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova2"]     = CFrame.new(-3, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
-    ["Cubot_Nova1"]     = CFrame.new(4, 124.5, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova3"]     = CFrame.new(-15, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cub0t_01"]        = CFrame.new(3, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_nova4"]     = CFrame.new(21, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["cubot_autoIoop"]  = CFrame.new(-7, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova2"]     = CFrame.new(-3, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+    ["Cubot_Nova1"]     = CFrame.new(4, 124.8, -70, -1, 0, 0, 0, 1, 0, 0, 0, -1),
 }
 
 -- USER NUMBER MAPPING FOR SERVERHOP
