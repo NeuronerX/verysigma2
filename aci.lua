@@ -1,4 +1,4 @@
--- Loop Kill Everyone Script with Friend Protection
+-- Loop Kill Everyone Script with Friend Protection (FIXED)
 -- Automatically activates on execution and protects friends of user ID 9260414163
 
 -- Configuration
@@ -15,20 +15,35 @@ getgenv().WHITELIST = {
 }
 getgenv().ProtectedPlayers = {} -- Store friends of protected user
 
--- Function to get friends of the protected user
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+-- Function to get friends of the protected user (FIXED)
 local function getFriendsOfUser(userId)
-    local success, friendsInfo = pcall(function()
-        return game:GetService("Players"):GetFriendsAsync(userId)
+    local success, result = pcall(function()
+        local friendPages = Players:GetFriendsAsync(userId)
+        local friends = {}
+        
+        while true do
+            local currentPage = friendPages:GetCurrentPage()
+            for _, friend in pairs(currentPage) do
+                table.insert(friends, friend.Username)
+            end
+            
+            if friendPages.IsFinished then
+                break
+            end
+            friendPages:AdvanceToNextPageAsync()
+        end
+        
+        return friends
     end)
     
     if success then
-        local friends = {}
-        for friend in friendsInfo:GetCurrentPage() do
-            table.insert(friends, friend.Username)
-        end
-        return friends
+        return result
     else
-        warn("Failed to get friends list for user ID: " .. userId)
+        warn("Failed to get friends list for user ID: " .. userId .. " | Error: " .. tostring(result))
         return {}
     end
 end
@@ -36,172 +51,184 @@ end
 -- Function to check if player should be protected
 local function isPlayerProtected(player)
     -- Check if player is in whitelist
-    if table.find(getgenv().WHITELIST, player.Name) then
-        return true
+    for _, whitelistedName in pairs(getgenv().WHITELIST) do
+        if player.Name == whitelistedName then
+            return true
+        end
     end
     
     -- Check if player is in protected friends list
-    if table.find(getgenv().ProtectedPlayers, player.Name) then
-        return true
+    for _, friendName in pairs(getgenv().ProtectedPlayers) do
+        if player.Name == friendName then
+            return true
+        end
     end
     
     -- Check if player is the local player
-    if player == game.Players.LocalPlayer then
+    if player == Players.LocalPlayer then
         return true
     end
     
     return false
 end
 
--- Function to update protected players list
+-- Function to update protected players list (FIXED)
 local function updateProtectedPlayers()
-    local friends = getFriendsOfUser(PROTECTED_USER_ID)
-    getgenv().ProtectedPlayers = friends
-    print("Updated protected players list. Protected friends:", #friends)
-    for i, friendName in pairs(friends) do
-        print("Protected friend:", friendName)
-    end
-end
-
--- Utility Functions
-function CheckIfEquipped()
-    if not game.Players.LocalPlayer.Character:FindFirstChild("Sword") then
-        if game.Players.LocalPlayer.Backpack:FindFirstChild("Sword") then
-            game.Players.LocalPlayer.Backpack:FindFirstChild("Sword").Parent = game.Players.LocalPlayer.Character
-        end
-    end
-    
-    if game.Players.LocalPlayer.Character:FindFirstChild("Sword") then
-        if game.Players.LocalPlayer.Character:FindFirstChild("Sword").Handle then
-            game.Players.LocalPlayer.Character:FindFirstChild("Sword").Handle.Massless = true
-            game.Players.LocalPlayer.Character:FindFirstChild("Sword").Handle.CanCollide = false
-            game.Players.LocalPlayer.Character:FindFirstChild("Sword").Handle.Size = Vector3.new(10, 10, 10)
-        end
-    end
-end
-
-function BringTarget(targetPart)
-    targetPart.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 1, -4)
-end
-
-function SwingTool()
-    task.defer(function()
-        if game.Players.LocalPlayer.Character:FindFirstChild("Sword") then
-            game.Players.LocalPlayer.Character:FindFirstChild("Sword"):Activate()
-        end
-        task.wait(0.002)
-        if game.Players.LocalPlayer.Character:FindFirstChild("Sword") then
-            game.Players.LocalPlayer.Character:FindFirstChild("Sword"):Activate()
+    spawn(function()
+        local success, friends = pcall(function()
+            return getFriendsOfUser(PROTECTED_USER_ID)
+        end)
+        
+        if success then
+            getgenv().ProtectedPlayers = friends
+            print("Updated protected players list. Protected friends:", #friends)
+            for i, friendName in pairs(friends) do
+                print("Protected friend " .. i .. ":", friendName)
+            end
+        else
+            warn("Failed to update protected players list")
         end
     end)
 end
 
--- Main Loop Kill Everyone Function
+-- Utility Functions
+function CheckIfEquipped()
+    local character = Players.LocalPlayer.Character
+    if not character then return end
+    
+    if not character:FindFirstChild("Sword") then
+        local backpack = Players.LocalPlayer.Backpack
+        local sword = backpack:FindFirstChild("Sword")
+        if sword then
+            sword.Parent = character
+        end
+    end
+    
+    local sword = character:FindFirstChild("Sword")
+    if sword and sword:FindFirstChild("Handle") then
+        sword.Handle.Massless = true
+        sword.Handle.CanCollide = false
+        sword.Handle.Size = Vector3.new(10, 10, 10)
+    end
+end
+
+function BringTarget(targetPart)
+    if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        targetPart.CFrame = Players.LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 1, -4)
+    end
+end
+
+function SwingTool()
+    spawn(function()
+        local character = Players.LocalPlayer.Character
+        if character then
+            local sword = character:FindFirstChild("Sword")
+            if sword then
+                sword:Activate()
+                wait(0.002)
+                sword:Activate()
+            end
+        end
+    end)
+end
+
+-- Chat command processing removed - script runs continuously
+
+-- Main Loop Kill Everyone Function (FIXED)
 local function startLoopKillEveryone()
     print("Starting Loop Kill Everyone - Friends of user " .. PROTECTED_USER_ID .. " are protected!")
     
     -- Update protected players list initially
     updateProtectedPlayers()
     
-    -- Update protected list every 60 seconds
+    -- Update protected list every 15 seconds - runs indefinitely
     spawn(function()
-        while not shouldStop do
+        while true do
             wait(15)
             updateProtectedPlayers()
         end
     end)
     
-    -- Main loop kill logic
-    task.defer(function()
-        repeat
-            for i, player in pairs(game.Players:GetPlayers()) do
-                if getgenv().LoopKillAll == true and not isPlayerProtected(player) and 
-                   player.Character and game.Players.LocalPlayer.Character and 
-                   game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    
-                    -- Try to target Part objects first
-                    if player.Character:FindFirstChildOfClass("Part") then
-                        if player.Character:FindFirstChild("Humanoid") then
-                            if player.Character:FindFirstChild("Humanoid").Health > 0 then
+    -- Main loop kill logic - runs indefinitely
+    spawn(function()
+        while true do
+            if getgenv().LoopKillAll then
+                for _, player in pairs(Players:GetPlayers()) do
+                    if not isPlayerProtected(player) and 
+                       player.Character and 
+                       Players.LocalPlayer.Character and 
+                       Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        
+                        -- Try to target Part objects first
+                        local targetPart = player.Character:FindFirstChildOfClass("Part")
+                        if targetPart then
+                            local humanoid = player.Character:FindFirstChild("Humanoid")
+                            if not humanoid or humanoid.Health > 0 then
                                 CheckIfEquipped()
-                                BringTarget(player.Character:FindFirstChildOfClass("Part"))
+                                BringTarget(targetPart)
                                 SwingTool()
                             end
                         else
-                            CheckIfEquipped()
-                            BringTarget(player.Character:FindFirstChildOfClass("Part"))
-                            SwingTool()
-                        end
-                    end
-                    
-                    -- Try to target MeshPart objects if Part not found
-                    if player.Character:FindFirstChildOfClass("MeshPart") then
-                        if player.Character:FindFirstChild("Humanoid") then
-                            if player.Character:FindFirstChild("Humanoid").Health > 0 then
-                                CheckIfEquipped()
-                                BringTarget(player.Character:FindFirstChildOfClass("MeshPart"))
-                                SwingTool()
+                            -- Try to target MeshPart objects if Part not found
+                            local meshPart = player.Character:FindFirstChildOfClass("MeshPart")
+                            if meshPart then
+                                local humanoid = player.Character:FindFirstChild("Humanoid")
+                                if not humanoid or humanoid.Health > 0 then
+                                    CheckIfEquipped()
+                                    BringTarget(meshPart)
+                                    SwingTool()
+                                end
                             end
-                        else
-                            CheckIfEquipped()
-                            BringTarget(player.Character:FindFirstChildOfClass("MeshPart"))
-                            SwingTool()
                         end
                     end
                 end
             end
-            task.wait()
-        until shouldStop == true
+            wait(0.1) -- Small delay to prevent lag
+        end
     end)
 end
 
 -- One-click kill everyone function (from original script)
-local function killEveryoneOnce()
+function killEveryoneOnce()
     spawn(function()
-        if game.Players.LocalPlayer.Backpack:FindFirstChild("Sword") then
-            game.Players.LocalPlayer.Backpack:FindFirstChild("Sword").Parent = game.Players.LocalPlayer.Character
+        local character = Players.LocalPlayer.Character
+        local backpack = Players.LocalPlayer.Backpack
+        
+        if backpack:FindFirstChild("Sword") then
+            backpack:FindFirstChild("Sword").Parent = character
         end
         
-        local sword = game.Players.LocalPlayer.Character:WaitForChild("Sword")
-        sword.Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
-        sword.Handle.Massless = true
-        
-        sword:Activate()
-        wait(0.05)
-        sword:Activate()
-        wait(0.05)
-        sword:Activate()
-        wait(0.05)
-        
-        sword.Handle.Size = Vector3.new(4, 4, 4)
+        if character then
+            local sword = character:WaitForChild("Sword", 5)
+            if sword and sword:FindFirstChild("Handle") then
+                sword.Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
+                sword.Handle.Massless = true
+                
+                sword:Activate()
+                wait(0.05)
+                sword:Activate()
+                wait(0.05)
+                sword:Activate()
+                wait(0.05)
+                
+                sword.Handle.Size = Vector3.new(4, 4, 4)
+            end
+        end
     end)
 end
 
--- Control functions
-local function stopLoopKill()
-    getgenv().LoopKillAll = false
-    shouldStop = true
-    print("Loop Kill Everyone stopped")
-end
-
-local function startLoopKill()
-    getgenv().LoopKillAll = true
-    shouldStop = false
-    startLoopKillEveryone()
-end
+-- Control functions removed - script runs continuously once started
 
 -- Auto-execute when script runs
 print("Auto-executing Loop Kill Everyone with friend protection...")
 startLoopKillEveryone()
 
--- Expose control functions globally for manual control if needed
-getgenv().stopLoopKill = stopLoopKill
-getgenv().startLoopKill = startLoopKill
+-- Expose essential functions globally
 getgenv().killEveryoneOnce = killEveryoneOnce
 getgenv().updateProtectedPlayers = updateProtectedPlayers
 
-print("Script loaded! Loop Kill Everyone is now active.")
+print("Script loaded! Loop Kill Everyone is now active and cannot be stopped.")
 print("Protected user ID:", PROTECTED_USER_ID)
-print("Use getgenv().stopLoopKill() to stop or getgenv().startLoopKill() to restart")
-print("Use getgenv().killEveryoneOnce() for one-time mass kill")
-print("Use getgenv().updateProtectedPlayers() to refresh friends list")
+print("Available functions:")
+print("  getgenv().killEveryoneOnce() for one-time mass kill")
+print("  getgenv().updateProtectedPlayers() to refresh friends list")
