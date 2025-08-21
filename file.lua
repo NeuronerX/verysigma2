@@ -161,6 +161,12 @@ function addPermanentTarget(player)
     
     getgenv().PermanentTargets[player.Name] = true
     addTargetToLoop(player)
+    
+    -- Auto-enable loop kill and predict when adding permanent target
+    getgenv().LoopKill = true
+    getgenv().Predict = true
+    
+    print("Added permanent target: " .. player.Name .. " for killing a main user")
 end
 
 -- Command Processing
@@ -267,27 +273,56 @@ local function setupChatCommandHandler()
     end)
 end
 
--- Kill Logger Setup
+-- FIXED Kill Logger Setup - This is the main fix
 local function setupKillLogger()
     pcall(function()
-        local event = ReplicatedStorage:FindFirstChild("APlayerWasKilled")
-        if not event then return end
+        -- Wait for the remote event to exist
+        local killEvent = ReplicatedStorage:WaitForChild("APlayerWasKilled", 10)
+        if not killEvent then 
+            warn("Kill event not found!")
+            return 
+        end
         
-        local connection = event.OnClientEvent:Connect(function(killerName, victimName, authCode)
-            if authCode ~= "Anrt4tiEx354xpl5oitzs" then return end
+        print("Kill detection system initialized - monitoring kills...")
+        
+        local connection = killEvent.OnClientEvent:Connect(function(killerName, victimName, authCode)
+            -- Verify the auth code
+            if authCode ~= "Anrt4tiEx354xpl5oitzs" then 
+                return 
+            end
             
-            if killerName and not MAIN_USERS[killerName] and 
-               not SECONDARY_MAIN_USERS[killerName] and not SIGMA_USERS[killerName] and 
-               not WHITELISTED_USERS[killerName] then
+            print("Kill detected: " .. tostring(killerName) .. " killed " .. tostring(victimName))
+            
+            -- Check if a main user or local player was killed
+            if (MAIN_USERS[victimName] or SECONDARY_MAIN_USERS[victimName] or victimName == LP.Name) then
+                print("Main user killed! Victim: " .. victimName .. " | Killer: " .. killerName)
                 
-                local killer = Players:FindFirstChild(killerName)
-                if MAIN_USERS[victimName] or victimName == LP.Name then
-                    addPermanentTarget(killer)
+                -- Make sure killer is not protected
+                if killerName and killerName ~= "" and 
+                   not MAIN_USERS[killerName] and 
+                   not SECONDARY_MAIN_USERS[killerName] and 
+                   not SIGMA_USERS[killerName] and 
+                   not WHITELISTED_USERS[killerName] then
+                    
+                    -- Find the killer player
+                    local killer = Players:FindFirstChild(killerName)
+                    if killer then
+                        print("Adding killer to permanent targets: " .. killerName)
+                        addPermanentTarget(killer)
+                    else
+                        -- If killer not found, store their name for when they join
+                        print("Killer not found in game, will target when they join: " .. killerName)
+                        getgenv().PermanentTargets[killerName] = true
+                        targetedPlayers[killerName] = true
+                    end
+                else
+                    print("Killer is protected or invalid: " .. tostring(killerName))
                 end
             end
         end)
         
         table.insert(connections, connection)
+        print("Kill logger connection established")
     end)
 end
 
@@ -368,17 +403,20 @@ end)
 
 -- Add always kill users to permanent targets and start looping immediately
 for userName, _ in pairs(ALWAYS_KILL) do
-    local player = Players:FindFirstChild(userName)
-    if player then
-        getgenv().PermanentTargets[player.Name] = true
-        addTargetToLoop(player)
-        getgenv().LoopKill = true
-        getgenv().Predict = true
+    if userName ~= "" then -- Skip empty entries
+        local player = Players:FindFirstChild(userName)
+        if player then
+            getgenv().PermanentTargets[player.Name] = true
+            addTargetToLoop(player)
+            getgenv().LoopKill = true
+            getgenv().Predict = true
+        end
     end
 end
 
--- Monitor for always kill users joining
+-- Monitor for players joining (including always kill users and targeted players)
 Players.PlayerAdded:Connect(function(player)
+    -- Check if this is an always kill user
     if ALWAYS_KILL[player.Name] then
         getgenv().PermanentTargets[player.Name] = true
         addTargetToLoop(player)
@@ -386,9 +424,12 @@ Players.PlayerAdded:Connect(function(player)
         getgenv().Predict = true
     end
     
-    -- Re-add targeted players who rejoin
-    if targetedPlayers[player.Name] then
+    -- Check if this player is a stored permanent target (killer who wasn't in game)
+    if getgenv().PermanentTargets[player.Name] or targetedPlayers[player.Name] then
         addTargetToLoop(player)
+        getgenv().LoopKill = true
+        getgenv().Predict = true
+        print("Targeted player joined: " .. player.Name)
     end
 end)
 
@@ -413,3 +454,4 @@ setupKillLogger()
 RunKA() -- Start kill aura immediately
 
 print("Primordium Ranked System loaded - Kill Aura auto-enabled")
+print("Kill detection system active - will target anyone who kills main users")
