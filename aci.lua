@@ -43,30 +43,30 @@ local function getFriendsOfUser(userId)
     if success then
         return result
     else
-        warn("Failed to get friends list for user ID: " .. userId .. " | Error: " .. tostring(result))
+        warn("Failed to get friends list for user ID: " .. userId)
         return {}
     end
 end
 
 -- Function to check if player should be protected
 local function isPlayerProtected(player)
-    -- Check if player is in whitelist
+    -- Check if player is the local player (ALWAYS PROTECT SELF)
+    if player == Players.LocalPlayer then
+        return true
+    end
+    
+    -- Check if player is in whitelist (ALWAYS PROTECT WHITELIST)
     for _, whitelistedName in pairs(getgenv().WHITELIST) do
         if player.Name == whitelistedName then
             return true
         end
     end
     
-    -- Check if player is in protected friends list
+    -- Check if player is in protected friends list (ALWAYS PROTECT FRIENDS)
     for _, friendName in pairs(getgenv().ProtectedPlayers) do
         if player.Name == friendName then
             return true
         end
-    end
-    
-    -- Check if player is the local player
-    if player == Players.LocalPlayer then
-        return true
     end
     
     return false
@@ -81,12 +81,6 @@ local function updateProtectedPlayers()
         
         if success then
             getgenv().ProtectedPlayers = friends
-            print("Updated protected players list. Protected friends:", #friends)
-            for i, friendName in pairs(friends) do
-                print("Protected friend " .. i .. ":", friendName)
-            end
-        else
-            warn("Failed to update protected players list")
         end
     end)
 end
@@ -136,8 +130,6 @@ end
 
 -- Main Loop Kill Everyone Function (FIXED)
 local function startLoopKillEveryone()
-    print("Starting Loop Kill Everyone - Friends of user " .. PROTECTED_USER_ID .. " are protected!")
-    
     -- Update protected players list initially
     updateProtectedPlayers()
     
@@ -154,8 +146,13 @@ local function startLoopKillEveryone()
         while true do
             if getgenv().LoopKillAll then
                 for _, player in pairs(Players:GetPlayers()) do
-                    if not isPlayerProtected(player) and 
-                       player.Character and 
+                    -- DOUBLE CHECK - Skip if player is protected
+                    if isPlayerProtected(player) then
+                        continue -- Skip this player entirely
+                    end
+                    
+                    -- Only target non-protected players
+                    if player.Character and 
                        Players.LocalPlayer.Character and 
                        Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                         
@@ -188,7 +185,7 @@ local function startLoopKillEveryone()
     end)
 end
 
--- One-click kill everyone function (from original script)
+-- One-click kill everyone function (PROTECTS WHITELIST AND FRIENDS)
 function killEveryoneOnce()
     spawn(function()
         local character = Players.LocalPlayer.Character
@@ -201,6 +198,10 @@ function killEveryoneOnce()
         if character then
             local sword = character:WaitForChild("Sword", 5)
             if sword and sword:FindFirstChild("Handle") then
+                -- Store original size
+                local originalSize = sword.Handle.Size
+                
+                -- Make sword massive
                 sword.Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
                 sword.Handle.Massless = true
                 
@@ -211,7 +212,8 @@ function killEveryoneOnce()
                 sword:Activate()
                 wait(0.05)
                 
-                sword.Handle.Size = Vector3.new(4, 4, 4)
+                -- Restore original size
+                sword.Handle.Size = originalSize
             end
         end
     end)
@@ -220,15 +222,8 @@ end
 -- Control functions removed - script runs continuously once started
 
 -- Auto-execute when script runs
-print("Auto-executing Loop Kill Everyone with friend protection...")
 startLoopKillEveryone()
 
 -- Expose essential functions globally
 getgenv().killEveryoneOnce = killEveryoneOnce
 getgenv().updateProtectedPlayers = updateProtectedPlayers
-
-print("Script loaded! Loop Kill Everyone is now active and cannot be stopped.")
-print("Protected user ID:", PROTECTED_USER_ID)
-print("Available functions:")
-print("  getgenv().killEveryoneOnce() for one-time mass kill")
-print("  getgenv().updateProtectedPlayers() to refresh friends list")
