@@ -2,7 +2,7 @@ if game.PlaceId ~= 6110766473 then
     return
 end
 
-wait(4)
+wait(2)
 local MAIN_USERS = {
     ["Pyan_x3v"] = true,
     ["Pyan_x2v"] = true,
