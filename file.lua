@@ -1,9 +1,9 @@
 -- RANK DEFINITIONS
 local MAIN_USERS = {
-    ["cubot_autoIoop"] = true,
-    ["Cubot_Nova2"] = true,
-    ["Cubot_Nova3"] = true,
-    ["cubot_nova4"] = true,
+    ["Pyan_x3v"] = true,
+    ["Pyan_x2v"] = true,
+    ["Pyan_x0v"] = true,
+    ["Pyan_x1v"] = true,
     ["Cub0t_01"] = true,
     ["FlexFightPro68"] = true,
     ["Iamnotrealyblack"] = true,
