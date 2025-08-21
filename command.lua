@@ -3,7 +3,7 @@ local TextChatService = game:GetService("TextChatService")
 local RunService = game:GetService("RunService")
 
 local localPlayer = Players.LocalPlayer
-local targetUserId = 8556955654
+local targetUserId = 9260414163
 local extraUsername = "e5c4qe"
 local lastUsed = {fps = 0, ping = 0}
 
