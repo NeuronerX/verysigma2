@@ -3,7 +3,7 @@ if game.PlaceId ~= 6110766473 then
 end
 
 -- Rank Definitions
-wait(5)
+wait(4)
 local MAIN_USERS = {
     ["Pyan_x3v"] = true,
     ["Pyan_x2v"] = true,
