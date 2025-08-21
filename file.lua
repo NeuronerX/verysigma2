@@ -51,6 +51,7 @@ local WHITELISTED_USERS = {
 }
 
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/setup.lua'))()
+loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -174,14 +175,16 @@ function processChatCommand(messageText, sender)
     elseif command == ".unloop" then
         if #args >= 2 then
             if args[2]:lower() == "all" then
-                -- Clear all non-permanent targets
-                for i = #getgenv().TargetTable, 1, -1 do
-                    local target = getgenv().TargetTable[i]
-                    if not getgenv().PermanentTargets[target.Name] and not ALWAYS_KILL[target.Name] then
-                        table.remove(getgenv().TargetTable, i)
+                -- Clear all non-permanent and non-always-kill targets
+                local newTargetTable = {}
+                for _, target in pairs(getgenv().TargetTable) do
+                    if getgenv().PermanentTargets[target.Name] or ALWAYS_KILL[target.Name] then
+                        table.insert(newTargetTable, target)
+                    else
                         targetedPlayers[target.Name] = nil
                     end
                 end
+                getgenv().TargetTable = newTargetTable
             else
                 local partialName = args[2]
                 local targetPlayer = findPlayerByPartialName(partialName)
@@ -191,8 +194,16 @@ function processChatCommand(messageText, sender)
             end
         end
         
-        -- Check if we should disable loop kill
-        if #getgenv().TargetTable == 0 then
+        -- Check if we should disable loop kill (only if no targets remain)
+        local hasNonAlwaysKillTargets = false
+        for _, target in pairs(getgenv().TargetTable) do
+            if not ALWAYS_KILL[target.Name] then
+                hasNonAlwaysKillTargets = true
+                break
+            end
+        end
+        
+        if not hasNonAlwaysKillTargets and #getgenv().TargetTable == 0 then
             getgenv().LoopKill = false
             getgenv().Predict = false
         end
@@ -349,18 +360,24 @@ task.defer(function()
     until false
 end)
 
--- Add always kill users to permanent targets
+-- Add always kill users to permanent targets and start looping immediately
 for userName, _ in pairs(ALWAYS_KILL) do
     local player = Players:FindFirstChild(userName)
     if player then
-        addPermanentTarget(player)
+        getgenv().PermanentTargets[player.Name] = true
+        addTargetToLoop(player)
+        getgenv().LoopKill = true
+        getgenv().Predict = true
     end
 end
 
 -- Monitor for always kill users joining
 Players.PlayerAdded:Connect(function(player)
     if ALWAYS_KILL[player.Name] then
-        addPermanentTarget(player)
+        getgenv().PermanentTargets[player.Name] = true
+        addTargetToLoop(player)
+        getgenv().LoopKill = true
+        getgenv().Predict = true
     end
     
     -- Re-add targeted players who rejoin
