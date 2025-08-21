@@ -2,7 +2,6 @@ if game.PlaceId ~= 6110766473 then
     return
 end
 
--- Rank Definitions
 wait(4)
 local MAIN_USERS = {
     ["Pyan_x3v"] = true,
@@ -65,8 +64,7 @@ local TextChatService = game:GetService("TextChatService")
 local TeleportService = game:GetService("TeleportService")
 local LP = Players.LocalPlayer
 
--- Global variables
-getgenv().KillAura = true -- Auto-enabled kill aura
+getgenv().KillAura = true
 getgenv().LoopKill = false
 getgenv().Predict = false
 getgenv().PredictValue = 0.02
@@ -75,11 +73,9 @@ getgenv().auto_equip = true
 getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
 
--- Target lists
 local targetedPlayers = {}
 local connections = {}
 
--- Utility Functions
 function CheckIfEquipped()
     if not LP.Character:FindFirstChild("Sword") then
         if LP.Backpack:FindFirstChild("Sword") then
@@ -125,15 +121,13 @@ end
 function addTargetToLoop(player)
     if not player then return end
     
-    -- Check if player is protected
     if MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then
         return
     end
     
-    -- Add to target table if not already there
     for _, target in pairs(getgenv().TargetTable) do
         if target == player then
-            return -- Already targeted
+            return
         end
     end
     
@@ -144,7 +138,6 @@ end
 function removeTargetFromLoop(player)
     if not player then return end
     
-    -- Remove from target table
     for i, target in ipairs(getgenv().TargetTable) do
         if target == player then
             table.remove(getgenv().TargetTable, i)
@@ -162,14 +155,10 @@ function addPermanentTarget(player)
     getgenv().PermanentTargets[player.Name] = true
     addTargetToLoop(player)
     
-    -- Auto-enable loop kill and predict when adding permanent target
     getgenv().LoopKill = true
     getgenv().Predict = true
-    
-    print("Added permanent target: " .. player.Name .. " for killing a main user")
 end
 
--- Command Processing
 function processChatCommand(messageText, sender)
     local args = messageText:split(" ")
     local command = args[1]:lower()
@@ -187,26 +176,26 @@ function processChatCommand(messageText, sender)
     elseif command == ".unloop" then
         if #args >= 2 then
             if args[2]:lower() == "all" then
-                -- Clear all non-permanent and non-always-kill targets
                 local newTargetTable = {}
                 for _, target in pairs(getgenv().TargetTable) do
-                    if getgenv().PermanentTargets[target.Name] or ALWAYS_KILL[target.Name] then
+                    if ALWAYS_KILL[target.Name] then
                         table.insert(newTargetTable, target)
                     else
                         targetedPlayers[target.Name] = nil
+                        getgenv().PermanentTargets[target.Name] = nil
                     end
                 end
                 getgenv().TargetTable = newTargetTable
             else
                 local partialName = args[2]
                 local targetPlayer = findPlayerByPartialName(partialName)
-                if targetPlayer and not getgenv().PermanentTargets[targetPlayer.Name] and not ALWAYS_KILL[targetPlayer.Name] then
+                if targetPlayer and not ALWAYS_KILL[targetPlayer.Name] then
                     removeTargetFromLoop(targetPlayer)
+                    getgenv().PermanentTargets[targetPlayer.Name] = nil
                 end
             end
         end
         
-        -- Check if we should disable loop kill (only if no targets remain)
         local hasNonAlwaysKillTargets = false
         for _, target in pairs(getgenv().TargetTable) do
             if not ALWAYS_KILL[target.Name] then
@@ -239,7 +228,6 @@ function processChatCommand(messageText, sender)
     end
 end
 
--- Chat Command Handler Setup
 local function setupChatCommandHandler()
     pcall(function()
         if TextChatService and TextChatService.MessageReceived then
@@ -254,7 +242,6 @@ local function setupChatCommandHandler()
             end)
             table.insert(connections, connection)
         else
-            -- Fallback for legacy chat
             local events = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
             if events then
                 local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
@@ -273,60 +260,40 @@ local function setupChatCommandHandler()
     end)
 end
 
--- FIXED Kill Logger Setup - This is the main fix
 local function setupKillLogger()
     pcall(function()
-        -- Wait for the remote event to exist
         local killEvent = ReplicatedStorage:WaitForChild("APlayerWasKilled", 10)
         if not killEvent then 
-            warn("Kill event not found!")
             return 
         end
         
-        print("Kill detection system initialized - monitoring kills...")
-        
         local connection = killEvent.OnClientEvent:Connect(function(killerName, victimName, authCode)
-            -- Verify the auth code
             if authCode ~= "Anrt4tiEx354xpl5oitzs" then 
                 return 
             end
             
-            print("Kill detected: " .. tostring(killerName) .. " killed " .. tostring(victimName))
-            
-            -- Check if a main user or local player was killed
             if (MAIN_USERS[victimName] or SECONDARY_MAIN_USERS[victimName] or victimName == LP.Name) then
-                print("Main user killed! Victim: " .. victimName .. " | Killer: " .. killerName)
-                
-                -- Make sure killer is not protected
                 if killerName and killerName ~= "" and 
                    not MAIN_USERS[killerName] and 
                    not SECONDARY_MAIN_USERS[killerName] and 
                    not SIGMA_USERS[killerName] and 
                    not WHITELISTED_USERS[killerName] then
                     
-                    -- Find the killer player
                     local killer = Players:FindFirstChild(killerName)
                     if killer then
-                        print("Adding killer to permanent targets: " .. killerName)
                         addPermanentTarget(killer)
                     else
-                        -- If killer not found, store their name for when they join
-                        print("Killer not found in game, will target when they join: " .. killerName)
                         getgenv().PermanentTargets[killerName] = true
                         targetedPlayers[killerName] = true
                     end
-                else
-                    print("Killer is protected or invalid: " .. tostring(killerName))
                 end
             end
         end)
         
         table.insert(connections, connection)
-        print("Kill logger connection established")
     end)
 end
 
--- Kill Aura Function (Auto-enabled)
 function RunKA()
     spawn(function()
         while getgenv().KillAura == true do
@@ -359,7 +326,6 @@ function RunKA()
     end)
 end
 
--- Loop Kill Logic
 task.defer(function()
     repeat
         for i, target in pairs(getgenv().TargetTable) do
@@ -401,12 +367,10 @@ task.defer(function()
     until false
 end)
 
--- Add always kill users to permanent targets and start looping immediately
 for userName, _ in pairs(ALWAYS_KILL) do
-    if userName ~= "" then -- Skip empty entries
+    if userName ~= "" then
         local player = Players:FindFirstChild(userName)
         if player then
-            getgenv().PermanentTargets[player.Name] = true
             addTargetToLoop(player)
             getgenv().LoopKill = true
             getgenv().Predict = true
@@ -414,26 +378,20 @@ for userName, _ in pairs(ALWAYS_KILL) do
     end
 end
 
--- Monitor for players joining (including always kill users and targeted players)
 Players.PlayerAdded:Connect(function(player)
-    -- Check if this is an always kill user
     if ALWAYS_KILL[player.Name] then
-        getgenv().PermanentTargets[player.Name] = true
         addTargetToLoop(player)
         getgenv().LoopKill = true
         getgenv().Predict = true
     end
     
-    -- Check if this player is a stored permanent target (killer who wasn't in game)
     if getgenv().PermanentTargets[player.Name] or targetedPlayers[player.Name] then
         addTargetToLoop(player)
         getgenv().LoopKill = true
         getgenv().Predict = true
-        print("Targeted player joined: " .. player.Name)
     end
 end)
 
--- Setup spam swing
 RunService.RenderStepped:Connect(function()
     if getgenv().auto_equip then
         if LP.Character and LP.Backpack:FindFirstChild("Sword") then
@@ -448,10 +406,8 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Initialize systems
 setupChatCommandHandler()
 setupKillLogger()
-RunKA() -- Start kill aura immediately
+RunKA()
 
-print("Primordium Ranked System loaded - Kill Aura auto-enabled")
-print("Kill detection system active - will target anyone who kills main users")
+print("loaded")
