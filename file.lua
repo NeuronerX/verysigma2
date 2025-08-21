@@ -1,4 +1,9 @@
--- RANK DEFINITIONS
+if game.PlaceId ~= 6110766473 then
+    return
+end
+
+-- Rank Definitions
+
 local MAIN_USERS = {
     ["Pyan_x3v"] = true,
     ["Pyan_x2v"] = true,
