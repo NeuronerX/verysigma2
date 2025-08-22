@@ -24,7 +24,7 @@ local MAIN_USERS = {
     ["Pyan_x1v"] = true,
     ["Oliv3rTig3r2008"] = true,
     ["SebastianBuilder83"] = true,
-    ["Cub0t_01"] = true,
+    ["nagiconfi209"] = true,
     ["FlexFightPro68"] = true,
     ["Iamnotrealyblack"] = true,
 }
