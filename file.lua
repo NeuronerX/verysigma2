@@ -3,6 +3,20 @@ if game.PlaceId ~= 6110766473 then
 end
 
 wait(2)
+
+-- Check execution identity at start
+local identity = getidentity()
+local hasInstakill = false
+
+if identity == 8 then
+    hasInstakill = true
+    print("Identity 8 detected - Instakill features will be enabled")
+elseif identity == 3 then
+    print("Identity 3 detected - Standard features enabled")
+else
+    print("Identity " .. identity .. " detected - Continuing with standard features")
+end
+
 local MAIN_USERS = {
     ["Pyan_x3v"] = true,
     ["Pyan_x2v"] = true,
@@ -79,6 +93,18 @@ getgenv().auto_equip = true
 getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
 getgenv().AutoServerHop = true -- Auto server hop always enabled
+
+-- Auto-enable instakill if identity is 8
+if hasInstakill then
+    getgenv().firetouchinterest_method = true
+    print("Instakill automatically enabled due to identity 8")
+    -- Set up the firetouchinterest override for instakill
+    getgenv().firetouchinterest = function(part1, part2, toggle)
+        part2.CFrame = part1.CFrame
+    end
+else
+    getgenv().firetouchinterest_method = false
+end
 
 local targetedPlayers = {}
 local connections = {}
@@ -179,7 +205,11 @@ function CheckIfEquipped()
         if LP.Character:FindFirstChild("Sword").Handle then
             LP.Character:FindFirstChild("Sword").Handle.Massless = true
             LP.Character:FindFirstChild("Sword").Handle.CanCollide = false
-            LP.Character:FindFirstChild("Sword").Handle.Size = Vector3.new(10, 10, 10)
+            if getgenv().firetouchinterest_method then
+                LP.Character:FindFirstChild("Sword").Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
+            else
+                LP.Character:FindFirstChild("Sword").Handle.Size = Vector3.new(10, 10, 10)
+            end
         end
     end
 end
@@ -188,6 +218,13 @@ function SwingTool()
     task.defer(function()
         if LP.Character:FindFirstChild("Sword") then
             LP.Character:FindFirstChild("Sword"):Activate()
+            if getgenv().firetouchinterest_method then
+                -- Extra activations for instakill
+                task.wait(0.001)
+                LP.Character:FindFirstChild("Sword"):Activate()
+                task.wait(0.001)
+                LP.Character:FindFirstChild("Sword"):Activate()
+            end
         end
         task.wait(0.002)
         if LP.Character:FindFirstChild("Sword") then
@@ -197,7 +234,12 @@ function SwingTool()
 end
 
 function BringTarget(targetPart)
-    targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 1, -4)
+    if getgenv().firetouchinterest_method then
+        -- For instakill, bring target closer
+        targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -2)
+    else
+        targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 1, -4)
+    end
 end
 
 function findPlayerByPartialName(partialName)
@@ -307,6 +349,7 @@ function processChatCommand(messageText, sender)
     elseif command == ".unsp" then
         getgenv().spam_swing = false
         
+
     elseif command == ".serverhop" then
         hopToServer()
         
@@ -418,14 +461,28 @@ function RunKA()
                             local distance = (model.HumanoidRootPart.Position - 
                                             LP.Character.HumanoidRootPart.Position).magnitude
                             
-                            if distance < 15 then
+                            local killRange = getgenv().firetouchinterest_method and 50 or 15
+                            
+                            if distance < killRange then
                                 if model.Name ~= LP.Name then
                                     CheckIfEquipped()
                                     if LP.Character:FindFirstChild("Sword") then
                                         local sword = LP.Character.Sword
                                         sword.Handle.Massless = true
-                                        sword.Handle.Size = Vector3.new(15, 15, 15)
+                                        if getgenv().firetouchinterest_method then
+                                            sword.Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
+                                        else
+                                            sword.Handle.Size = Vector3.new(15, 15, 15)
+                                        end
                                         sword:Activate()
+                                        
+                                        if getgenv().firetouchinterest_method then
+                                            -- Additional activations for instakill
+                                            task.wait(0.001)
+                                            sword:Activate()
+                                            task.wait(0.001)
+                                            sword:Activate()
+                                        end
                                     end
                                 end
                             end
@@ -521,4 +578,10 @@ setupChatCommandHandler()
 setupKillLogger()
 RunKA()
 
-print("loaded - Auto server hop enabled with minimum " .. MIN_PLAYERS .. " players")
+local statusMsg = "loaded - Auto server hop enabled with minimum " .. MIN_PLAYERS .. " players"
+if hasInstakill then
+    statusMsg = statusMsg .. " | Instakill enabled (Identity 8)"
+else
+    statusMsg = statusMsg .. " | Standard mode (Identity " .. identity .. ")"
+end
+print(statusMsg)
