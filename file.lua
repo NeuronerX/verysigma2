@@ -56,6 +56,10 @@ local WHITELISTED_USERS = {
     ["xLiv3_r"] = true,
 }
 
+-- Server hop configuration
+local MIN_PLAYERS = 3 -- Minimum players required to stay in server
+local CHECK_INTERVAL = 30 -- Check player count every 30 seconds
+
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/setup.lua'))()
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 local Players = game:GetService("Players")
@@ -63,6 +67,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 local LP = Players.LocalPlayer
 
 getgenv().KillAura = true
@@ -73,9 +78,95 @@ getgenv().spam_swing = false
 getgenv().auto_equip = true
 getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
+getgenv().AutoServerHop = true -- Auto server hop always enabled
 
 local targetedPlayers = {}
 local connections = {}
+local isHopping = false
+
+-- Server hopping functions
+function getServerList()
+    local success, result = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"))
+    end)
+    
+    if success and result and result.data then
+        return result.data
+    end
+    return nil
+end
+
+function hopToServer()
+    if isHopping then return end
+    isHopping = true
+    
+    local function attemptHop()
+        print("Attempting server hop...")
+        
+        local servers = getServerList()
+        if not servers then
+            print("Failed to get server list, retrying in 5 seconds...")
+            wait(5)
+            attemptHop()
+            return
+        end
+        
+        -- Filter servers with enough players and not the current server
+        local validServers = {}
+        for _, server in pairs(servers) do
+            if server.id ~= game.JobId and 
+               server.playing >= MIN_PLAYERS and 
+               server.playing < server.maxPlayers then
+                table.insert(validServers, server)
+            end
+        end
+        
+        if #validServers == 0 then
+            print("No suitable servers found, retrying in 10 seconds...")
+            wait(10)
+            attemptHop()
+            return
+        end
+        
+        -- Try to teleport to a random valid server
+        local targetServer = validServers[math.random(1, #validServers)]
+        print("Attempting to join server with " .. targetServer.playing .. " players...")
+        
+        local success, error = pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer.id, LP)
+        end)
+        
+        if not success then
+            print("Teleport failed: " .. tostring(error) .. ", retrying in 5 seconds...")
+            wait(5)
+            attemptHop()
+        end
+    end
+    
+    attemptHop()
+end
+
+function checkPlayerCount()
+    if not getgenv().AutoServerHop then return end
+    
+    local currentPlayers = #Players:GetPlayers()
+    print("Current players: " .. currentPlayers .. " | Minimum required: " .. MIN_PLAYERS)
+    
+    if currentPlayers < MIN_PLAYERS then
+        print("Player count too low, initiating server hop...")
+        hopToServer()
+    end
+end
+
+-- Start player count monitoring
+task.spawn(function()
+    while true do
+        if not isHopping then
+            checkPlayerCount()
+        end
+        wait(CHECK_INTERVAL)
+    end
+end)
 
 function CheckIfEquipped()
     if not LP.Character:FindFirstChild("Sword") then
@@ -217,9 +308,28 @@ function processChatCommand(messageText, sender)
         getgenv().spam_swing = false
         
     elseif command == ".serverhop" then
-        local servers = game.HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
-        local server = servers.data[math.random(1, #servers.data)]
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LP)
+        hopToServer()
+        
+    elseif command == ".autohop" then
+        if #args >= 2 then
+            if args[2]:lower() == "on" then
+                getgenv().AutoServerHop = true
+                print("Auto server hop enabled")
+            elseif args[2]:lower() == "off" then
+                getgenv().AutoServerHop = false
+                print("Auto server hop disabled")
+            end
+        else
+            getgenv().AutoServerHop = not getgenv().AutoServerHop
+            print("Auto server hop " .. (getgenv().AutoServerHop and "enabled" or "disabled"))
+        end
+        
+    elseif command == ".minplayers" and #args >= 2 then
+        local newMin = tonumber(args[2])
+        if newMin and newMin >= 1 then
+            MIN_PLAYERS = newMin
+            print("Minimum players set to " .. MIN_PLAYERS)
+        end
         
     elseif command == ".activate" then
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
@@ -411,4 +521,4 @@ setupChatCommandHandler()
 setupKillLogger()
 RunKA()
 
-print("loaded")
+print("loaded - Auto server hop enabled with minimum " .. MIN_PLAYERS .. " players")
