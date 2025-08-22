@@ -194,3 +194,13 @@ else
         VirtualUser:ClickButton2(Vector2.new())
     end)
 end
+
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+
+-- Connect to the Idled event
+Players.LocalPlayer.Idled:Connect(function()
+    -- Simulate a harmless input to prevent AFK kick
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(0,0))
+end)
