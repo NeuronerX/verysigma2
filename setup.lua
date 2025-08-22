@@ -86,9 +86,9 @@ local localPlayer = Players.LocalPlayer
 local randomX, randomY, randomZ
 
 local function pickRandomLocation()
-    randomX = math.random(0, 1500)
+    randomX = math.random(0, 1800)
     randomY = math.random(3000, 6000)
-    randomZ = math.random(0, 1500)
+    randomZ = math.random(0, 2500)
 end
 
 local function teleportLoop(character)
