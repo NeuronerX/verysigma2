@@ -11,7 +11,8 @@ getgenv().WHITELIST = {
     "e5c4qe",
     "xL1fe_r",
     "xL1v3_r",
-    "xLiv3_r"
+    "xLiv3_r",
+    "Oliv3rTig3r2008"
 }
 getgenv().ProtectedPlayers = {} -- Store friends of protected user
 
