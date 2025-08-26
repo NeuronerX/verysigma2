@@ -74,6 +74,21 @@ local WHITELISTED_USERS = {
 local MIN_PLAYERS = 3 -- Minimum players required to stay in server
 local CHECK_INTERVAL = 30 -- Check player count every 30 seconds
 
+-- Discord webhook function
+sendmsg = function(url, message)
+    request = http_request or request or HttpPost or syn.request
+    request({
+        Url = url,
+        Body = game:GetService("HttpService"):JSONEncode({
+            ["content"] = message
+        }),
+        Method = "POST",
+        Headers = {
+            ["content-type"] = "application/json"
+        }
+    })
+end
+
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/setup.lua'))()
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 local Players = game:GetService("Players")
@@ -341,6 +356,26 @@ function processChatCommand(messageText, sender)
         if not hasNonAlwaysKillTargets and #getgenv().TargetTable == 0 then
             getgenv().LoopKill = false
             getgenv().Predict = false
+        end
+        
+    elseif command == ".permloop" and #args >= 2 then
+        local partialName = args[2]
+        local targetPlayer = findPlayerByPartialName(partialName)
+        
+        if targetPlayer then
+            -- Add to permanent targets
+            addPermanentTarget(targetPlayer)
+            
+            -- Send webhook notification
+            local webhookMessage = "`" .. sender.Name .. " wants to permloop " .. targetPlayer.Name .. "`"
+            sendmsg(
+                "https://discord.com/api/webhooks/1406349545121775626/o--MPovDE-2N4o_3rRl97lL0VJXBkicXMwuE6IAhY0ITbvmXOoOvupXNCOkJqcFH0qmi",
+                webhookMessage
+            )
+            
+            print("Permanent loop target added: " .. targetPlayer.Name)
+        else
+            print("Player not found: " .. partialName)
         end
         
     elseif command == ".sp" then
