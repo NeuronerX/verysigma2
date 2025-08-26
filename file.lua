@@ -41,7 +41,7 @@ local SECONDARY_MAIN_USERS = {
 
 local ALWAYS_KILL = {
     ["kurwuwA"] = true,
-    [""] = true,
+    ["GoatReflex"] = true,
     [""] = true,
     [""] = true,
     [""] = true,
