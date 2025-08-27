@@ -43,6 +43,7 @@ local ALWAYS_KILL = {
     ["kurwuwA"] = true,
     ["GoatReflex"] = true,
     ["vreckotygecko"] = true,
+    ["fdngdfngjdfgndf"] = true,
 }
 
 local WHITELISTED_USERS = {
