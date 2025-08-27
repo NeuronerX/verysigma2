@@ -1,96 +1,43 @@
-if game.PlaceId ~= 6110766473 then
-    return
-end
+if game.PlaceId ~= 6110766473 then return end
 
-wait(2)
-
--- Check execution identity at start
 local identity = getidentity()
-local hasInstakill = false
-
-if identity == 8 then
-    hasInstakill = true
-    print("Identity 8 detected - Instakill features will be enabled")
-elseif identity == 3 then
-    print("Identity 3 detected - Standard features enabled")
-else
-    print("Identity " .. identity .. " detected - Continuing with standard features")
-end
+local hasInstakill = identity == 8
 
 local MAIN_USERS = {
-    ["Pyan_x3v"] = true,
-    ["Pyan_x2v"] = true,
-    ["Pyan_x0v"] = true,
-    ["Pyan_x1v"] = true,
-    ["Oliv3rTig3r2008"] = true,
-    ["SebastianBuilder83"] = true,
-    ["nagiconfi209"] = true,
-    ["FlexFightPro68"] = true,
-    ["Iamnotrealyblack"] = true,
+    ["Pyan_x3v"] = true, ["Pyan_x2v"] = true, ["Pyan_x0v"] = true, ["Pyan_x1v"] = true,
+    ["Oliv3rTig3r2008"] = true, ["SebastianBuilder83"] = true, ["nagiconfi209"] = true,
+    ["FlexFightPro68"] = true, ["Iamnotrealyblack"] = true,
 }
 
 local SIGMA_USERS = {
-    ["FlexFightPro68"] = true,
-    ["Iamnotrealyblack"] = true,
-    ["e5c4qe"] = true,
+    ["FlexFightPro68"] = true, ["Iamnotrealyblack"] = true, ["e5c4qe"] = true,
 }
 
-local SECONDARY_MAIN_USERS = {
-    ["sssssss"] = true,
-}
+local SECONDARY_MAIN_USERS = {["sssssss"] = true}
 
 local ALWAYS_KILL = {
-    ["kurwuwA"] = true,
-    ["GoatReflex"] = true,
-    ["vreckotygecko"] = true,
-    ["fdngdfngjdfgndf"] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
+    ["kurwuwA"] = true, ["GoatReflex"] = true, ["vreckotygecko"] = true, ["fdngdfngjdfgndf"] = true,
 }
 
 local WHITELISTED_USERS = {
-    ["e5c4qe"] = true,
-    ["xL1fe_r"] = true,
-    ["xL1v3_r"] = true,
-    ["xLiv3_r"] = true,
+    ["e5c4qe"] = true, ["xL1fe_r"] = true, ["xL1v3_r"] = true, ["xLiv3_r"] = true,
 }
 
--- Server hop configuration
-local MIN_PLAYERS = 3 -- Minimum players required to stay in server
-local CHECK_INTERVAL = 30 -- Check player count every 30 seconds
+local MIN_PLAYERS = 3
+local CHECK_INTERVAL = 30
 
--- Discord webhook function
 sendmsg = function(url, message)
-    request = http_request or request or HttpPost or syn.request
-    request({
+    (http_request or request or HttpPost or syn.request)({
         Url = url,
-        Body = game:GetService("HttpService"):JSONEncode({
-            ["content"] = message
-        }),
+        Body = game:GetService("HttpService"):JSONEncode({["content"] = message}),
         Method = "POST",
-        Headers = {
-            ["content-type"] = "application/json"
-        }
+        Headers = {["content-type"] = "application/json"}
     })
 end
 
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/setup.lua'))()
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -107,13 +54,10 @@ getgenv().spam_swing = false
 getgenv().auto_equip = true
 getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
-getgenv().AutoServerHop = true -- Auto server hop always enabled
+getgenv().AutoServerHop = true
 
--- Auto-enable instakill if identity is 8
 if hasInstakill then
     getgenv().firetouchinterest_method = true
-    print("Instakill automatically enabled due to identity 8")
-    -- Set up the firetouchinterest override for instakill
     getgenv().firetouchinterest = function(part1, part2, toggle)
         part2.CFrame = part1.CFrame
     end
@@ -125,16 +69,11 @@ local targetedPlayers = {}
 local connections = {}
 local isHopping = false
 
--- Server hopping functions
 function getServerList()
     local success, result = pcall(function()
         return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"))
     end)
-    
-    if success and result and result.data then
-        return result.data
-    end
-    return nil
+    return success and result and result.data
 end
 
 function hopToServer()
@@ -142,118 +81,89 @@ function hopToServer()
     isHopping = true
     
     local function attemptHop()
-        print("Attempting server hop...")
-        
         local servers = getServerList()
         if not servers then
-            print("Failed to get server list, retrying in 5 seconds...")
-            wait(5)
+            task.wait(5)
             attemptHop()
             return
         end
         
-        -- Filter servers with enough players and not the current server
         local validServers = {}
         for _, server in pairs(servers) do
-            if server.id ~= game.JobId and 
-               server.playing >= MIN_PLAYERS and 
-               server.playing < server.maxPlayers then
+            if server.id ~= game.JobId and server.playing >= MIN_PLAYERS and server.playing < server.maxPlayers then
                 table.insert(validServers, server)
             end
         end
         
         if #validServers == 0 then
-            print("No suitable servers found, retrying in 10 seconds...")
-            wait(10)
+            task.wait(10)
             attemptHop()
             return
         end
         
-        -- Try to teleport to a random valid server
         local targetServer = validServers[math.random(1, #validServers)]
-        print("Attempting to join server with " .. targetServer.playing .. " players...")
-        
-        local success, error = pcall(function()
+        pcall(function()
             TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer.id, LP)
         end)
         
-        if not success then
-            print("Teleport failed: " .. tostring(error) .. ", retrying in 5 seconds...")
-            wait(5)
-            attemptHop()
-        end
+        task.wait(5)
+        attemptHop()
     end
     
     attemptHop()
 end
 
 function checkPlayerCount()
-    if not getgenv().AutoServerHop then return end
-    
-    local currentPlayers = #Players:GetPlayers()
-    print("Current players: " .. currentPlayers .. " | Minimum required: " .. MIN_PLAYERS)
-    
-    if currentPlayers < MIN_PLAYERS then
-        print("Player count too low, initiating server hop...")
+    if getgenv().AutoServerHop and #Players:GetPlayers() < MIN_PLAYERS then
         hopToServer()
     end
 end
 
--- Start player count monitoring
 task.spawn(function()
     while true do
-        if not isHopping then
-            checkPlayerCount()
-        end
-        wait(CHECK_INTERVAL)
+        if not isHopping then checkPlayerCount() end
+        task.wait(CHECK_INTERVAL)
     end
 end)
 
+local sword_cache
 function CheckIfEquipped()
-    if not LP.Character:FindFirstChild("Sword") then
-        if LP.Backpack:FindFirstChild("Sword") then
-            LP.Backpack:FindFirstChild("Sword").Parent = LP.Character
+    if not LP.Character then return end
+    
+    sword_cache = LP.Character:FindFirstChild("Sword")
+    if not sword_cache then
+        sword_cache = LP.Backpack:FindFirstChild("Sword")
+        if sword_cache then
+            sword_cache.Parent = LP.Character
+        else
+            return
         end
     end
     
-    if LP.Character:FindFirstChild("Sword") then
-        if LP.Character:FindFirstChild("Sword").Handle then
-            LP.Character:FindFirstChild("Sword").Handle.Massless = true
-            LP.Character:FindFirstChild("Sword").Handle.CanCollide = false
-            if getgenv().firetouchinterest_method then
-                LP.Character:FindFirstChild("Sword").Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
-            else
-                LP.Character:FindFirstChild("Sword").Handle.Size = Vector3.new(10, 10, 10)
-            end
-        end
+    local handle = sword_cache.Handle
+    if handle then
+        handle.Massless = true
+        handle.CanCollide = false
+        handle.Size = getgenv().firetouchinterest_method and 
+            Vector3.new(1000000000, 1000000000, 1000000000) or 
+            Vector3.new(15, 15, 15)
     end
 end
 
 function SwingTool()
-    task.defer(function()
-        if LP.Character:FindFirstChild("Sword") then
-            LP.Character:FindFirstChild("Sword"):Activate()
-            if getgenv().firetouchinterest_method then
-                -- Extra activations for instakill
-                task.wait(0.001)
-                LP.Character:FindFirstChild("Sword"):Activate()
-                task.wait(0.001)
-                LP.Character:FindFirstChild("Sword"):Activate()
-            end
+    if sword_cache then
+        sword_cache:Activate()
+        if getgenv().firetouchinterest_method then
+            sword_cache:Activate()
+            sword_cache:Activate()
         end
-        task.wait(0.002)
-        if LP.Character:FindFirstChild("Sword") then
-            LP.Character:FindFirstChild("Sword"):Activate()
-        end
-    end)
+    end
 end
 
 function BringTarget(targetPart)
-    if getgenv().firetouchinterest_method then
-        -- For instakill, bring target closer
-        targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -2)
-    else
-        targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 1, -4)
+    if LP.Character and LP.Character.HumanoidRootPart then
+        targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * 
+            (getgenv().firetouchinterest_method and CFrame.new(0, 0, -2) or CFrame.new(0, 1, -4))
     end
 end
 
@@ -264,20 +174,13 @@ function findPlayerByPartialName(partialName)
             return player
         end
     end
-    return nil
 end
 
 function addTargetToLoop(player)
-    if not player then return end
-    
-    if MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then
-        return
-    end
+    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     for _, target in pairs(getgenv().TargetTable) do
-        if target == player then
-            return
-        end
+        if target == player then return end
     end
     
     table.insert(getgenv().TargetTable, player)
@@ -298,12 +201,10 @@ function removeTargetFromLoop(player)
 end
 
 function addPermanentTarget(player)
-    if not player then return end
-    if MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
+    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     getgenv().PermanentTargets[player.Name] = true
     addTargetToLoop(player)
-    
     getgenv().LoopKill = true
     getgenv().Predict = true
 end
@@ -313,9 +214,7 @@ function processChatCommand(messageText, sender)
     local command = args[1]:lower()
     
     if command == ".loop" and #args >= 2 then
-        local partialName = args[2]
-        local targetPlayer = findPlayerByPartialName(partialName)
-        
+        local targetPlayer = findPlayerByPartialName(args[2])
         if targetPlayer then
             addTargetToLoop(targetPlayer)
             getgenv().LoopKill = true
@@ -336,8 +235,7 @@ function processChatCommand(messageText, sender)
                 end
                 getgenv().TargetTable = newTargetTable
             else
-                local partialName = args[2]
-                local targetPlayer = findPlayerByPartialName(partialName)
+                local targetPlayer = findPlayerByPartialName(args[2])
                 if targetPlayer and not ALWAYS_KILL[targetPlayer.Name] then
                     removeTargetFromLoop(targetPlayer)
                     getgenv().PermanentTargets[targetPlayer.Name] = nil
@@ -345,73 +243,46 @@ function processChatCommand(messageText, sender)
             end
         end
         
-        local hasNonAlwaysKillTargets = false
+        local hasTargets = false
         for _, target in pairs(getgenv().TargetTable) do
             if not ALWAYS_KILL[target.Name] then
-                hasNonAlwaysKillTargets = true
+                hasTargets = true
                 break
             end
         end
         
-        if not hasNonAlwaysKillTargets and #getgenv().TargetTable == 0 then
+        if not hasTargets and #getgenv().TargetTable == 0 then
             getgenv().LoopKill = false
             getgenv().Predict = false
         end
         
     elseif command == ".permloop" and #args >= 2 then
-        local partialName = args[2]
-        local targetPlayer = findPlayerByPartialName(partialName)
-        
+        local targetPlayer = findPlayerByPartialName(args[2])
         if targetPlayer then
-            -- Add to permanent targets
             addPermanentTarget(targetPlayer)
-            
-            -- Send webhook notification
-            local webhookMessage = "`" .. sender.Name .. " wants to permloop " .. targetPlayer.Name .. "`"
             sendmsg(
                 "https://discord.com/api/webhooks/1406349545121775626/o--MPovDE-2N4o_3rRl97lL0VJXBkicXMwuE6IAhY0ITbvmXOoOvupXNCOkJqcFH0qmi",
-                webhookMessage
+                "`" .. sender.Name .. " wants to permloop " .. targetPlayer.Name .. "`"
             )
-            
-            print("Permanent loop target added: " .. targetPlayer.Name)
-        else
-            print("Player not found: " .. partialName)
         end
         
     elseif command == ".sp" then
         getgenv().spam_swing = true
-        
     elseif command == ".unsp" then
         getgenv().spam_swing = false
-        
-
     elseif command == ".serverhop" then
         hopToServer()
-        
     elseif command == ".autohop" then
         if #args >= 2 then
-            if args[2]:lower() == "on" then
-                getgenv().AutoServerHop = true
-                print("Auto server hop enabled")
-            elseif args[2]:lower() == "off" then
-                getgenv().AutoServerHop = false
-                print("Auto server hop disabled")
-            end
+            getgenv().AutoServerHop = args[2]:lower() == "on"
         else
             getgenv().AutoServerHop = not getgenv().AutoServerHop
-            print("Auto server hop " .. (getgenv().AutoServerHop and "enabled" or "disabled"))
         end
-        
     elseif command == ".minplayers" and #args >= 2 then
         local newMin = tonumber(args[2])
-        if newMin and newMin >= 1 then
-            MIN_PLAYERS = newMin
-            print("Minimum players set to " .. MIN_PLAYERS)
-        end
-        
+        if newMin and newMin >= 1 then MIN_PLAYERS = newMin end
     elseif command == ".activate" then
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
-        
     elseif command == ".update" then
         TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP)
     end
@@ -424,8 +295,7 @@ local function setupChatCommandHandler()
                 if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
                     local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                     if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
-                        local messageText = txtMsg.Text
-                        processChatCommand(messageText, sender)
+                        processChatCommand(txtMsg.Text, sender)
                     end
                 end
             end)
@@ -438,8 +308,7 @@ local function setupChatCommandHandler()
                     local connection = msgEvent.OnClientEvent:Connect(function(data)
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
-                            local messageText = data.Message
-                            processChatCommand(messageText, speaker)
+                            processChatCommand(data.Message, speaker)
                         end
                     end)
                     table.insert(connections, connection)
@@ -452,72 +321,44 @@ end
 local function setupKillLogger()
     pcall(function()
         local killEvent = ReplicatedStorage:WaitForChild("APlayerWasKilled", 10)
-        if not killEvent then 
-            return 
-        end
-        
-        local connection = killEvent.OnClientEvent:Connect(function(killerName, victimName, authCode)
-            if authCode ~= "Anrt4tiEx354xpl5oitzs" then 
-                return 
-            end
-            
-            if (MAIN_USERS[victimName] or SECONDARY_MAIN_USERS[victimName] or victimName == LP.Name) then
-                if killerName and killerName ~= "" and 
-                   not MAIN_USERS[killerName] and 
-                   not SECONDARY_MAIN_USERS[killerName] and 
-                   not SIGMA_USERS[killerName] and 
-                   not WHITELISTED_USERS[killerName] then
-                    
-                    local killer = Players:FindFirstChild(killerName)
-                    if killer then
-                        addPermanentTarget(killer)
-                    else
-                        getgenv().PermanentTargets[killerName] = true
-                        targetedPlayers[killerName] = true
+        if killEvent then
+            local connection = killEvent.OnClientEvent:Connect(function(killerName, victimName, authCode)
+                if authCode == "Anrt4tiEx354xpl5oitzs" and (MAIN_USERS[victimName] or SECONDARY_MAIN_USERS[victimName] or victimName == LP.Name) then
+                    if killerName and killerName ~= "" and not MAIN_USERS[killerName] and not SECONDARY_MAIN_USERS[killerName] and not SIGMA_USERS[killerName] and not WHITELISTED_USERS[killerName] then
+                        local killer = Players:FindFirstChild(killerName)
+                        if killer then
+                            addPermanentTarget(killer)
+                        else
+                            getgenv().PermanentTargets[killerName] = true
+                            targetedPlayers[killerName] = true
+                        end
                     end
                 end
-            end
-        end)
-        
-        table.insert(connections, connection)
+            end)
+            table.insert(connections, connection)
+        end
     end)
 end
 
 function RunKA()
-    spawn(function()
-        while getgenv().KillAura == true do
-            task.wait()
-            for i, model in pairs(workspace:GetChildren()) do
-                if LP.Character and LP.Character.HumanoidRootPart then
-                    if model:IsA("Model") and model:FindFirstChild("HumanoidRootPart") and 
-                       model:FindFirstChild("Humanoid") then
-                        
-                        if model:FindFirstChild("Humanoid").Health ~= 0 then
-                            local distance = (model.HumanoidRootPart.Position - 
-                                            LP.Character.HumanoidRootPart.Position).magnitude
-                            
-                            local killRange = getgenv().firetouchinterest_method and 50 or 15
-                            
+    task.spawn(function()
+        while getgenv().KillAura do
+            if LP.Character and LP.Character.HumanoidRootPart then
+                local myPos = LP.Character.HumanoidRootPart.Position
+                local killRange = getgenv().firetouchinterest_method and 50 or 20
+                
+                for _, model in pairs(workspace:GetChildren()) do
+                    if model:IsA("Model") and model:FindFirstChild("HumanoidRootPart") and model:FindFirstChild("Humanoid") and model.Name ~= LP.Name then
+                        local humanoid = model:FindFirstChild("Humanoid")
+                        if humanoid.Health > 0 then
+                            local distance = (model.HumanoidRootPart.Position - myPos).Magnitude
                             if distance < killRange then
-                                if model.Name ~= LP.Name then
-                                    CheckIfEquipped()
-                                    if LP.Character:FindFirstChild("Sword") then
-                                        local sword = LP.Character.Sword
-                                        sword.Handle.Massless = true
-                                        if getgenv().firetouchinterest_method then
-                                            sword.Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
-                                        else
-                                            sword.Handle.Size = Vector3.new(15, 15, 15)
-                                        end
-                                        sword:Activate()
-                                        
-                                        if getgenv().firetouchinterest_method then
-                                            -- Additional activations for instakill
-                                            task.wait(0.001)
-                                            sword:Activate()
-                                            task.wait(0.001)
-                                            sword:Activate()
-                                        end
+                                CheckIfEquipped()
+                                if sword_cache then
+                                    sword_cache:Activate()
+                                    if getgenv().firetouchinterest_method then
+                                        sword_cache:Activate()
+                                        sword_cache:Activate()
                                     end
                                 end
                             end
@@ -525,52 +366,33 @@ function RunKA()
                     end
                 end
             end
+            task.wait()
         end
     end)
 end
 
 task.defer(function()
-    repeat
-        for i, target in pairs(getgenv().TargetTable) do
-            if getgenv().LoopKill == true and target ~= LP and 
-               target.Character and target.Character:FindFirstChildOfClass("Part") and
-               LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                
-                if target.Character:FindFirstChild("Humanoid") then
-                    if target.Character:FindFirstChild("Humanoid").Health > 0 then
-                        CheckIfEquipped()
-                        BringTarget(target.Character:FindFirstChildOfClass("Part"))
-                        SwingTool()
+    while true do
+        if getgenv().LoopKill and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+            for _, target in pairs(getgenv().TargetTable) do
+                if target ~= LP and target.Character then
+                    local targetPart = target.Character:FindFirstChildOfClass("Part") or target.Character:FindFirstChildOfClass("MeshPart")
+                    if targetPart then
+                        local humanoid = target.Character:FindFirstChild("Humanoid")
+                        if not humanoid or humanoid.Health > 0 then
+                            CheckIfEquipped()
+                            BringTarget(targetPart)
+                            SwingTool()
+                        end
                     end
-                else
-                    CheckIfEquipped()
-                    BringTarget(target.Character:FindFirstChildOfClass("Part"))
-                    SwingTool()
-                end
-            end
-            
-            if getgenv().LoopKill == true and target ~= LP and 
-               target.Character and target.Character:FindFirstChildOfClass("MeshPart") and
-               LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                
-                if target.Character:FindFirstChild("Humanoid") then
-                    if target.Character:FindFirstChild("Humanoid").Health > 0 then
-                        CheckIfEquipped()
-                        BringTarget(target.Character:FindFirstChildOfClass("MeshPart"))
-                        SwingTool()
-                    end
-                else
-                    CheckIfEquipped()
-                    BringTarget(target.Character:FindFirstChildOfClass("MeshPart"))
-                    SwingTool()
                 end
             end
         end
         task.wait()
-    until false
+    end
 end)
 
-for userName, _ in pairs(ALWAYS_KILL) do
+for userName in pairs(ALWAYS_KILL) do
     if userName ~= "" then
         local player = Players:FindFirstChild(userName)
         if player then
@@ -582,41 +404,23 @@ for userName, _ in pairs(ALWAYS_KILL) do
 end
 
 Players.PlayerAdded:Connect(function(player)
-    if ALWAYS_KILL[player.Name] then
-        addTargetToLoop(player)
-        getgenv().LoopKill = true
-        getgenv().Predict = true
-    end
-    
-    if getgenv().PermanentTargets[player.Name] or targetedPlayers[player.Name] then
+    if ALWAYS_KILL[player.Name] or getgenv().PermanentTargets[player.Name] or targetedPlayers[player.Name] then
         addTargetToLoop(player)
         getgenv().LoopKill = true
         getgenv().Predict = true
     end
 end)
 
-RunService.RenderStepped:Connect(function()
-    if getgenv().auto_equip then
-        if LP.Character and LP.Backpack:FindFirstChild("Sword") then
-            LP.Backpack:FindFirstChild("Sword").Parent = LP.Character
-        end
+RunService.Heartbeat:Connect(function()
+    if getgenv().auto_equip and LP.Character and LP.Backpack:FindFirstChild("Sword") and not LP.Character:FindFirstChild("Sword") then
+        LP.Backpack:FindFirstChild("Sword").Parent = LP.Character
     end
     
-    if getgenv().spam_swing == true then
-        if LP.Character and LP.Character:FindFirstChild("Sword") then
-            LP.Character.Sword:Activate()
-        end
+    if getgenv().spam_swing and LP.Character and LP.Character:FindFirstChild("Sword") then
+        LP.Character.Sword:Activate()
     end
 end)
 
 setupChatCommandHandler()
 setupKillLogger()
 RunKA()
-
-local statusMsg = "loaded - Auto server hop enabled with minimum " .. MIN_PLAYERS .. " players"
-if hasInstakill then
-    statusMsg = statusMsg .. " | Instakill enabled (Identity 8)"
-else
-    statusMsg = statusMsg .. " | Standard mode (Identity " .. identity .. ")"
-end
-print(statusMsg)
