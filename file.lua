@@ -43,24 +43,6 @@ local ALWAYS_KILL = {
     ["kurwuwA"] = true,
     ["GoatReflex"] = true,
     ["vreckotygecko"] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
-    [""] = true,
 }
 
 local WHITELISTED_USERS = {
@@ -71,26 +53,32 @@ local WHITELISTED_USERS = {
 }
 
 -- Server hop configuration
-local MIN_PLAYERS = 3 -- Minimum players required to stay in server
-local CHECK_INTERVAL = 30 -- Check player count every 30 seconds
+local MIN_PLAYERS = 3
+local CHECK_INTERVAL = 30
+local HOP_COOLDOWN = 5 -- Seconds between hop attempts
 
 -- Discord webhook function
 sendmsg = function(url, message)
-    request = http_request or request or HttpPost or syn.request
-    request({
-        Url = url,
-        Body = game:GetService("HttpService"):JSONEncode({
-            ["content"] = message
-        }),
-        Method = "POST",
-        Headers = {
-            ["content-type"] = "application/json"
-        }
-    })
+    local request = http_request or request or HttpPost or syn.request
+    if request then
+        pcall(function()
+            request({
+                Url = url,
+                Body = game:GetService("HttpService"):JSONEncode({
+                    ["content"] = message
+                }),
+                Method = "POST",
+                Headers = {
+                    ["content-type"] = "application/json"
+                }
+            })
+        end)
+    end
 end
 
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/setup.lua'))()
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -101,19 +89,16 @@ local LP = Players.LocalPlayer
 
 getgenv().KillAura = true
 getgenv().LoopKill = false
-getgenv().Predict = false
-getgenv().PredictValue = 0.02
 getgenv().spam_swing = false
 getgenv().auto_equip = true
 getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
-getgenv().AutoServerHop = true -- Auto server hop always enabled
+getgenv().AutoServerHop = true
 
 -- Auto-enable instakill if identity is 8
 if hasInstakill then
     getgenv().firetouchinterest_method = true
     print("Instakill automatically enabled due to identity 8")
-    -- Set up the firetouchinterest override for instakill
     getgenv().firetouchinterest = function(part1, part2, toggle)
         part2.CFrame = part1.CFrame
     end
@@ -124,70 +109,126 @@ end
 local targetedPlayers = {}
 local connections = {}
 local isHopping = false
+local lastHopAttempt = 0
 
--- Server hopping functions
-function getServerList()
+-- Enhanced server hopping functions
+local function getServerList()
     local success, result = pcall(function()
-        return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"))
+        return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
     
-    if success and result and result.data then
-        return result.data
+    if not success then
+        print("Failed to fetch server list - HTTP request failed")
+        return nil
     end
-    return nil
+    
+    local decoded
+    success, decoded = pcall(function()
+        return HttpService:JSONDecode(result)
+    end)
+    
+    if not success or not decoded or not decoded.data then
+        print("Failed to decode server list JSON")
+        return nil
+    end
+    
+    return decoded.data
 end
 
-function hopToServer()
-    if isHopping then return end
+local function findValidServers(serverList, minPlayers)
+    local validServers = {}
+    
+    for _, server in pairs(serverList) do
+        if server.id and server.id ~= game.JobId then
+            local playing = tonumber(server.playing) or 0
+            local maxPlayers = tonumber(server.maxPlayers) or 0
+            
+            -- More flexible server selection
+            if playing >= minPlayers and playing < maxPlayers then
+                table.insert(validServers, {
+                    id = server.id,
+                    playing = playing,
+                    maxPlayers = maxPlayers
+                })
+            end
+        end
+    end
+    
+    -- Sort by player count (highest first)
+    table.sort(validServers, function(a, b)
+        return a.playing > b.playing
+    end)
+    
+    return validServers
+end
+
+local function hopToServer()
+    local currentTime = tick()
+    if isHopping or (currentTime - lastHopAttempt) < HOP_COOLDOWN then
+        return
+    end
+    
     isHopping = true
+    lastHopAttempt = currentTime
+    
+    print("Initiating server hop...")
     
     local function attemptHop()
-        print("Attempting server hop...")
-        
-        local servers = getServerList()
-        if not servers then
-            print("Failed to get server list, retrying in 5 seconds...")
-            wait(5)
-            attemptHop()
+        local serverList = getServerList()
+        if not serverList then
+            print("Could not retrieve server list, retrying...")
+            wait(3)
+            if #Players:GetPlayers() < MIN_PLAYERS then
+                attemptHop()
+            else
+                isHopping = false
+            end
             return
         end
         
-        -- Filter servers with enough players and not the current server
-        local validServers = {}
-        for _, server in pairs(servers) do
-            if server.id ~= game.JobId and 
-               server.playing >= MIN_PLAYERS and 
-               server.playing < server.maxPlayers then
-                table.insert(validServers, server)
+        print("Found " .. #serverList .. " total servers")
+        
+        -- Try different minimum player requirements
+        local attempts = {MIN_PLAYERS, math.max(1, MIN_PLAYERS - 1), 1}
+        
+        for _, minReq in ipairs(attempts) do
+            local validServers = findValidServers(serverList, minReq)
+            
+            if #validServers > 0 then
+                print("Found " .. #validServers .. " valid servers with min " .. minReq .. " players")
+                
+                -- Try multiple servers in case one fails
+                for i = 1, math.min(3, #validServers) do
+                    local targetServer = validServers[i]
+                    print("Attempting to join server " .. i .. " with " .. targetServer.playing .. "/" .. targetServer.maxPlayers .. " players")
+                    
+                    local success = pcall(function()
+                        TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer.id, LP)
+                    end)
+                    
+                    if success then
+                        print("Teleport request sent successfully")
+                        return
+                    else
+                        print("Teleport failed for server " .. i .. ", trying next...")
+                        wait(1)
+                    end
+                end
+                
+                break -- Exit the attempts loop if we found servers but all failed
+            else
+                print("No valid servers found with min " .. minReq .. " players")
             end
         end
         
-        if #validServers == 0 then
-            print("No suitable servers found, retrying in 10 seconds...")
-            wait(10)
-            attemptHop()
-            return
-        end
-        
-        -- Try to teleport to a random valid server
-        local targetServer = validServers[math.random(1, #validServers)]
-        print("Attempting to join server with " .. targetServer.playing .. " players...")
-        
-        local success, error = pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer.id, LP)
-        end)
-        
-        if not success then
-            print("Teleport failed: " .. tostring(error) .. ", retrying in 5 seconds...")
-            wait(5)
-            attemptHop()
-        end
+        print("No suitable servers available, will retry later")
+        isHopping = false
     end
     
     attemptHop()
 end
 
-function checkPlayerCount()
+local function checkPlayerCount()
     if not getgenv().AutoServerHop then return end
     
     local currentPlayers = #Players:GetPlayers()
@@ -234,7 +275,6 @@ function SwingTool()
         if LP.Character:FindFirstChild("Sword") then
             LP.Character:FindFirstChild("Sword"):Activate()
             if getgenv().firetouchinterest_method then
-                -- Extra activations for instakill
                 task.wait(0.001)
                 LP.Character:FindFirstChild("Sword"):Activate()
                 task.wait(0.001)
@@ -250,7 +290,6 @@ end
 
 function BringTarget(targetPart)
     if getgenv().firetouchinterest_method then
-        -- For instakill, bring target closer
         targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -2)
     else
         targetPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.new(0, 1, -4)
@@ -260,7 +299,7 @@ end
 function findPlayerByPartialName(partialName)
     partialName = partialName:lower()
     for _, player in pairs(Players:GetPlayers()) do
-        if player.Name:lower():find(partialName) then
+        if player.Name:lower():find(partialName, 1, true) then
             return player
         end
     end
@@ -303,9 +342,7 @@ function addPermanentTarget(player)
     
     getgenv().PermanentTargets[player.Name] = true
     addTargetToLoop(player)
-    
     getgenv().LoopKill = true
-    getgenv().Predict = true
 end
 
 function processChatCommand(messageText, sender)
@@ -319,7 +356,9 @@ function processChatCommand(messageText, sender)
         if targetPlayer then
             addTargetToLoop(targetPlayer)
             getgenv().LoopKill = true
-            getgenv().Predict = true
+            print("Added " .. targetPlayer.Name .. " to loop")
+        else
+            print("Player not found: " .. partialName)
         end
         
     elseif command == ".unloop" then
@@ -335,12 +374,14 @@ function processChatCommand(messageText, sender)
                     end
                 end
                 getgenv().TargetTable = newTargetTable
+                print("Removed all non-permanent targets from loop")
             else
                 local partialName = args[2]
                 local targetPlayer = findPlayerByPartialName(partialName)
                 if targetPlayer and not ALWAYS_KILL[targetPlayer.Name] then
                     removeTargetFromLoop(targetPlayer)
                     getgenv().PermanentTargets[targetPlayer.Name] = nil
+                    print("Removed " .. targetPlayer.Name .. " from loop")
                 end
             end
         end
@@ -355,7 +396,6 @@ function processChatCommand(messageText, sender)
         
         if not hasNonAlwaysKillTargets and #getgenv().TargetTable == 0 then
             getgenv().LoopKill = false
-            getgenv().Predict = false
         end
         
     elseif command == ".permloop" and #args >= 2 then
@@ -363,10 +403,8 @@ function processChatCommand(messageText, sender)
         local targetPlayer = findPlayerByPartialName(partialName)
         
         if targetPlayer then
-            -- Add to permanent targets
             addPermanentTarget(targetPlayer)
             
-            -- Send webhook notification
             local webhookMessage = "`" .. sender.Name .. " wants to permloop " .. targetPlayer.Name .. "`"
             sendmsg(
                 "https://discord.com/api/webhooks/1406349545121775626/o--MPovDE-2N4o_3rRl97lL0VJXBkicXMwuE6IAhY0ITbvmXOoOvupXNCOkJqcFH0qmi",
@@ -380,12 +418,14 @@ function processChatCommand(messageText, sender)
         
     elseif command == ".sp" then
         getgenv().spam_swing = true
+        print("Spam swing enabled")
         
     elseif command == ".unsp" then
         getgenv().spam_swing = false
+        print("Spam swing disabled")
         
-
     elseif command == ".serverhop" then
+        print("Manual server hop requested")
         hopToServer()
         
     elseif command == ".autohop" then
@@ -512,7 +552,6 @@ function RunKA()
                                         sword:Activate()
                                         
                                         if getgenv().firetouchinterest_method then
-                                            -- Additional activations for instakill
                                             task.wait(0.001)
                                             sword:Activate()
                                             task.wait(0.001)
@@ -529,6 +568,7 @@ function RunKA()
     end)
 end
 
+-- Main loop kill system
 task.defer(function()
     repeat
         for i, target in pairs(getgenv().TargetTable) do
@@ -570,31 +610,31 @@ task.defer(function()
     until false
 end)
 
+-- Initialize ALWAYS_KILL targets
 for userName, _ in pairs(ALWAYS_KILL) do
     if userName ~= "" then
         local player = Players:FindFirstChild(userName)
         if player then
             addTargetToLoop(player)
             getgenv().LoopKill = true
-            getgenv().Predict = true
         end
     end
 end
 
+-- Handle new players joining
 Players.PlayerAdded:Connect(function(player)
     if ALWAYS_KILL[player.Name] then
         addTargetToLoop(player)
         getgenv().LoopKill = true
-        getgenv().Predict = true
     end
     
     if getgenv().PermanentTargets[player.Name] or targetedPlayers[player.Name] then
         addTargetToLoop(player)
         getgenv().LoopKill = true
-        getgenv().Predict = true
     end
 end)
 
+-- Main render stepped loop
 RunService.RenderStepped:Connect(function()
     if getgenv().auto_equip then
         if LP.Character and LP.Backpack:FindFirstChild("Sword") then
@@ -613,7 +653,7 @@ setupChatCommandHandler()
 setupKillLogger()
 RunKA()
 
-local statusMsg = "loaded - Auto server hop enabled with minimum " .. MIN_PLAYERS .. " players"
+local statusMsg = "Script loaded2 - Auto server hop enabled with minimum " .. MIN_PLAYERS .. " players"
 if hasInstakill then
     statusMsg = statusMsg .. " | Instakill enabled (Identity 8)"
 else
