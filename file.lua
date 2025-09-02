@@ -2,7 +2,10 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
 local LP = Players.LocalPlayer
+local PlaceId = game.PlaceId
+local JobId = game.JobId
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 
 -- Cleanup function
@@ -43,7 +46,7 @@ local MAIN_USERS = {
     ["Pyan_x2v"] = true,
     ["Pyan_x0v"] = true,
     ["XxAmeliaBeastStormyx"] = true,
-    ["Pyan503"] = true,
+    ["cubot_nova4"] = true,
     ["Cub0t_01"] = true,
     ["FlexFightPro68"] = true,
     ["Iamnotrealyblack"] = true,
@@ -74,7 +77,7 @@ local WHITELISTED_USERS = {
 local originalTargets = {
     ["Pyan_x2v"] = CFrame.new(7152, 4405, 4707),
     ["XxAmeliaBeastStormyx"] = CFrame.new(7122, 4505, 4719),
-    ["Pyan503"] = CFrame.new(7122, 4475, 4719),
+    ["cubot_nova4"] = CFrame.new(7122, 4475, 4719),
     ["cubot_autoIoop"] = CFrame.new(7132, 4605, 4707),
     ["Cubot_Nova2"] = CFrame.new(7122, 4705, 4729),
     ["Cubot_Nova1"] = CFrame.new(7132, 4605, 4529),
@@ -511,6 +514,9 @@ local function processChatCommand(messageText, sender)
         
     elseif command == ".activate" then
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
+        
+    elseif command == ".update" then
+        TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LP)
     end
 end
 
@@ -679,4 +685,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver3")
+print("ver4")
