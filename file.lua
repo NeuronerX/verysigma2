@@ -34,6 +34,8 @@ cleanupOnStart()
 -- Performance constants
 local DIST = 67690
 local DIST_SQ = DIST * DIST
+local DMG_TIMES = 20  -- Increased for consistency
+local FT_TIMES = 30   -- Increased for consistency
 local SWORD_NAME = "Sword"
 
 -- USER TABLES
@@ -41,7 +43,7 @@ local MAIN_USERS = {
     ["Pyan_x2v"] = true,
     ["Pyan_x0v"] = true,
     ["XxAmeliaBeastStormyx"] = true,
-    ["cubot_nova4"] = true,
+    ["Pyan503"] = true,
     ["Cub0t_01"] = true,
     ["FlexFightPro68"] = true,
     ["Iamnotrealyblack"] = true,
@@ -72,7 +74,7 @@ local WHITELISTED_USERS = {
 local originalTargets = {
     ["Pyan_x2v"] = CFrame.new(7152, 4405, 4707),
     ["XxAmeliaBeastStormyx"] = CFrame.new(7122, 4505, 4719),
-    ["cubot_nova4"] = CFrame.new(7122, 4475, 4719),
+    ["Pyan503"] = CFrame.new(7122, 4475, 4719),
     ["cubot_autoIoop"] = CFrame.new(7132, 4605, 4707),
     ["Cubot_Nova2"] = CFrame.new(7122, 4705, 4729),
     ["Cubot_Nova1"] = CFrame.new(7132, 4605, 4529),
@@ -139,15 +141,52 @@ end
 
 -- Enhanced auto-equip system
 local function autoEquip()
-    local character = LP.Character
-    if not character then return end
-    
-    -- Auto-equip sword from backpack
     for _, tool in ipairs(LP.Backpack:GetChildren()) do
-        if tool.Name == SWORD_NAME and tool:IsA("Tool") then
-            tool.Parent = character
+        if tool.Name == "Sword" and tool:IsA("Tool") then
+            tool.Parent = LP.Character
         end
     end
+end
+
+local function swordSoundSpam(duration)
+    local startTime = tick()
+    while tick() - startTime < duration do
+        -- Unequip all tools
+        for _, tool in pairs(LP.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                tool.Parent = LP.Backpack
+            end
+        end
+        -- Re-equip all tools
+        for _, tool in pairs(LP.Backpack:GetChildren()) do
+            tool.Parent = LP.Character
+        end
+        task.wait(0.01)
+    end
+end
+
+local function removeAnimations(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    -- remove Animator instantly (replicates, so others don't see animations)
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        animator:Destroy()
+    end
+    -- stop any currently playing animations (local + replicated)
+    for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+        track:Stop()
+    end
+    -- block new animators from being added
+    humanoid.ChildAdded:Connect(function(child)
+        if child:IsA("Animator") then
+            task.wait()
+            child:Destroy()
+        end
+    end)
+    -- block animations locally (you won't see them either)
+    humanoid.AnimationPlayed:Connect(function(track)
+        track:Stop()
+    end)
 end
 
 -- Tool setup
@@ -170,16 +209,15 @@ local function batchFireTouch(toolPart, targetParts)
     
     pcall(function() toolPart.Parent:Activate() end)
     
-    -- Direct sequential firing for maximum damage
+    -- Direct sequential firing with DMG_TIMES repetitions
     for i = 1, #targetParts do
         local part = targetParts[i]
         if part and part.Parent then
             pcall(function()
-                firetouchinterest(toolPart, part, 0)
-                firetouchinterest(toolPart, part, 1)
-                firetouchinterest(toolPart, part, 0)
-                firetouchinterest(toolPart, part, 1)
-                firetouchinterest(toolPart, part, 0)
+                for _ = 1, DMG_TIMES do
+                    firetouchinterest(toolPart, part, 0)
+                    firetouchinterest(toolPart, part, 1)
+                end
             end)
         end
     end
@@ -217,9 +255,9 @@ local function killLoop(player, toolPart)
             
             consecutiveFailures = 0
             
-            -- Multiple tool activations
+            -- Multiple tool activations (reduced from 8 to 5)
             task.spawn(function()
-                for _ = 1, 8 do
+                for _ = 1, 5 do
                     pcall(function() tool:Activate() end)
                 end
             end)
@@ -237,6 +275,7 @@ local function killLoop(player, toolPart)
                 batchFireTouch(toolPart, tempParts)
             end
             
+            -- Consistent timing
             RunService.Heartbeat:Wait()
         end
         killTrackers[player] = nil
@@ -305,30 +344,28 @@ function startPersistentHandleKill(targetPlayer)
                         if root and humanoid and humanoid.Health > 0 then
                             if firetouchinterest then
                                 pcall(function()
-                                    -- Root part hits
-                                    firetouchinterest(handle, root, 0)
-                                    firetouchinterest(handle, root, 1)
-                                    firetouchinterest(handle, root, 0)
-                                    firetouchinterest(handle, root, 1)
-                                    firetouchinterest(handle, root, 0)
+                                    -- Root part hits with DMG_TIMES
+                                    for _ = 1, DMG_TIMES do
+                                        firetouchinterest(handle, root, 0)
+                                        firetouchinterest(handle, root, 1)
+                                    end
                                     
                                     -- Head hits for instant kill
                                     local head = targetPlayer.Character:FindFirstChild("Head")
                                     if head then
-                                        firetouchinterest(handle, head, 0)
-                                        firetouchinterest(handle, head, 1)
-                                        firetouchinterest(handle, head, 0)
-                                        firetouchinterest(handle, head, 1)
-                                        firetouchinterest(handle, head, 0)
+                                        for _ = 1, DMG_TIMES do
+                                            firetouchinterest(handle, head, 0)
+                                            firetouchinterest(handle, head, 1)
+                                        end
                                     end
                                     
                                     -- Torso hits
                                     local torso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso")
                                     if torso then
-                                        firetouchinterest(handle, torso, 0)
-                                        firetouchinterest(handle, torso, 1)
-                                        firetouchinterest(handle, torso, 0)
-                                        firetouchinterest(handle, torso, 1)
+                                        for _ = 1, DMG_TIMES do
+                                            firetouchinterest(handle, torso, 0)
+                                            firetouchinterest(handle, torso, 1)
+                                        end
                                     end
                                 end)
                             end
@@ -599,10 +636,29 @@ end)
 -- Character setup
 LP.CharacterAdded:Connect(function(character)
     local humanoid = character:WaitForChild("Humanoid")
+    -- Sword spam on death
+    humanoid.Died:Connect(function()
+        swordSoundSpam(0.1)
+    end)
+    -- Sword spam + remove animations instantly on respawn
+    task.spawn(function()
+        removeAnimations(character)
+        swordSoundSpam(0.2)
+    end)
     setupCharacter(character)
 end)
 
 if LP.Character then
+    local humanoid = LP.Character:WaitForChild("Humanoid")
+    -- Sword spam on death
+    humanoid.Died:Connect(function()
+        swordSoundSpam(0.1)
+    end)
+    -- Sword spam + remove animations instantly on respawn
+    task.spawn(function()
+        removeAnimations(LP.Character)
+        swordSoundSpam(0.2)
+    end)
     setupCharacter(LP.Character)
 end
 
@@ -623,4 +679,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver2")
+print("ver3")
