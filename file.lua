@@ -3,6 +3,7 @@ local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 local LP = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local JobId = game.JobId
@@ -46,7 +47,7 @@ local MAIN_USERS = {
     ["Pyan_x2v"] = true,
     ["Pyan_x0v"] = true,
     ["XxAmeliaBeastStormyx"] = true,
-    ["cubot_nova4"] = true,
+    ["Pyan503"] = true,
     ["Cub0t_01"] = true,
     ["FlexFightPro68"] = true,
     ["Iamnotrealyblack"] = true,
@@ -77,7 +78,7 @@ local WHITELISTED_USERS = {
 local originalTargets = {
     ["Pyan_x2v"] = CFrame.new(7152, 4405, 4707),
     ["XxAmeliaBeastStormyx"] = CFrame.new(7122, 4505, 4719),
-    ["cubot_nova4"] = CFrame.new(7122, 4475, 4719),
+    ["Pyan503"] = CFrame.new(7122, 4475, 4719),
     ["cubot_autoIoop"] = CFrame.new(7132, 4605, 4707),
     ["Cubot_Nova2"] = CFrame.new(7122, 4705, 4729),
     ["Cubot_Nova1"] = CFrame.new(7132, 4605, 4529),
@@ -96,6 +97,8 @@ local killTrackers = {}
 local tempParts = {}
 local cachedTools = {}
 local handleKillActive = {}
+local toolTargetedPlayers = {} -- Players targeted for having too many tools
+local lastPlayerCountCheck = 0
 
 -- Utility functions
 local function findPlayerByPartialName(partialName)
@@ -107,7 +110,7 @@ local function findPlayerByPartialName(partialName)
     end
 end
 
-local function addTargetToLoop(player)
+local function addTargetToLoop(player, isToolTarget)
     if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     for _, target in pairs(getgenv().TargetTable) do
@@ -116,6 +119,11 @@ local function addTargetToLoop(player)
     
     table.insert(getgenv().TargetTable, player)
     targetedPlayers[player.Name] = true
+    
+    -- Mark if this is a tool-based target
+    if isToolTarget then
+        toolTargetedPlayers[player.Name] = true
+    end
     
     -- Start persistent handle kill for this target
     startPersistentHandleKill(player)
@@ -132,6 +140,7 @@ local function removeTargetFromLoop(player)
     end
     
     targetedPlayers[player.Name] = nil
+    toolTargetedPlayers[player.Name] = nil -- Remove tool target flag
     handleKillActive[player] = nil
 end
 
@@ -142,7 +151,77 @@ local function addPermanentTarget(player)
     addTargetToLoop(player)
 end
 
--- Enhanced auto-equip system
+-- Server hop function
+local function serverHop()
+    task.spawn(function()
+        local servers = {}
+        local success, req = pcall(function()
+            return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
+        end)
+        
+        if not success then 
+            print("Serverhop failed: Couldn't get server list")
+            return 
+        end
+        
+        local success2, body = pcall(function()
+            return HttpService:JSONDecode(req)
+        end)
+        
+        if not success2 or not body or not body.data then 
+            print("Serverhop failed: Couldn't decode server list")
+            return 
+        end
+
+        for i, v in next, body.data do
+            if type(v) == "table" and tonumber(v.playing) and tonumber(v.maxPlayers) and v.playing < v.maxPlayers and v.id ~= JobId then
+                table.insert(servers, 1, v.id)
+            end
+        end
+
+        if #servers > 0 then
+            TeleportService:TeleportToPlaceInstance(PlaceId, servers[math.random(1, #servers)], LP)
+        else
+            print("Serverhop failed: Couldn't find a server")
+        end
+    end)
+end
+
+-- Auto server hop check function
+local function checkPlayerCountForServerHop()
+    local currentTime = tick()
+    if currentTime - lastPlayerCountCheck < 23.002 then return end
+    lastPlayerCountCheck = currentTime
+    
+    local playerCount = #Players:GetPlayers()
+    if playerCount < 2 then
+        print("Low player count detected (" .. playerCount .. "), server hopping...")
+        serverHop()
+    end
+end
+
+-- Tool count check function
+local function checkToolCount(player)
+    if not player.Character then return end
+    if MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
+    
+    local toolCount = 0
+    if player.Backpack then
+        toolCount = toolCount + #player.Backpack:GetChildren()
+    end
+    if player.Character then
+        for _, item in pairs(player.Character:GetChildren()) do
+            if item:IsA("Tool") then
+                toolCount = toolCount + 1
+            end
+        end
+    end
+    
+    if toolCount >= 88 and not toolTargetedPlayers[player.Name] then
+        print("Player " .. player.Name .. " has " .. toolCount .. " tools, targeting...")
+        addTargetToLoop(player, true) -- Mark as tool target
+    end
+end
 local function autoEquip()
     for _, tool in ipairs(LP.Backpack:GetChildren()) do
         if tool.Name == "Sword" and tool:IsA("Tool") then
@@ -517,6 +596,9 @@ local function processChatCommand(messageText, sender)
         
     elseif command == ".update" then
         TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LP)
+        
+    elseif command == ".serverhop" or command == ".shop" then
+        serverHop()
     end
 end
 
@@ -623,9 +705,18 @@ end
 -- Player management
 Players.PlayerAdded:Connect(function(player)
     playerList[#playerList + 1] = player
-    if ALWAYS_KILL[player.Name] or getgenv().PermanentTargets[player.Name] or targetedPlayers[player.Name] then
+    if ALWAYS_KILL[player.Name] or getgenv().PermanentTargets[player.Name] or (targetedPlayers[player.Name] and not toolTargetedPlayers[player.Name]) then
         addTargetToLoop(player)
     end
+    
+    -- Check tool count for new players
+    if player.Character then
+        checkToolCount(player)
+    end
+    player.CharacterAdded:Connect(function()
+        task.wait(2) -- Wait for tools to load
+        checkToolCount(player)
+    end)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -637,6 +728,13 @@ Players.PlayerRemoving:Connect(function(player)
         end
     end
     handleKillActive[player] = nil
+    
+    -- Only remove from targeting if they were tool-targeted (not permanently or manually targeted)
+    if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
+        toolTargetedPlayers[player.Name] = nil
+        targetedPlayers[player.Name] = nil
+        removeTargetFromLoop(player)
+    end
 end)
 
 -- Character setup
@@ -673,6 +771,18 @@ RunService.Heartbeat:Connect(onHeartbeat)
 RunService.Stepped:Connect(autoEquip)
 RunService.RenderStepped:Connect(teleportLoop)
 
+-- Auto server hop check loop
+RunService.Heartbeat:Connect(checkPlayerCountForServerHop)
+
+-- Tool count monitoring loop
+RunService.Heartbeat:Connect(function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LP then
+            checkToolCount(player)
+        end
+    end
+end)
+
 -- Spam swing loop
 RunService.Heartbeat:Connect(function()
     if getgenv().spam_swing and LP.Character and LP.Character:FindFirstChild("Sword") then
@@ -685,4 +795,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver4")
+print("ver5")
