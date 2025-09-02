@@ -388,11 +388,23 @@ local function teleportLoop()
         local targetCFrame = originalTargets[LP.Name]
         if targetCFrame then
             character.HumanoidRootPart.CFrame = targetCFrame
+            character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+            character.HumanoidRootPart.AngularVelocity = Vector3.new(0, 0, 0)
             
             local humanoid = character:FindFirstChild("Humanoid")
             if humanoid then
                 humanoid.PlatformStand = true
+                humanoid:ChangeState(Enum.HumanoidStateType.Physics)
             end
+            
+            -- Additional anti-fall measures
+            local bodyPosition = character.HumanoidRootPart:FindFirstChild("BodyPosition")
+            if not bodyPosition then
+                bodyPosition = Instance.new("BodyPosition")
+                bodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bodyPosition.Parent = character.HumanoidRootPart
+            end
+            bodyPosition.Position = targetCFrame.Position
         end
     end
 end
@@ -509,14 +521,14 @@ local function setupCharacter(character)
     -- Setup existing tools
     for _, tool in ipairs(character:GetChildren()) do
         if tool:IsA("Tool") then
-            setupToolHandle(tool)
+            setupTool(tool)
         end
     end
     
     -- Monitor new tools
     character.ChildAdded:Connect(function(child)
         if child:IsA("Tool") then
-            setupToolHandle(child)
+            setupTool(child)
         end
     end)
 end
