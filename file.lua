@@ -5,6 +5,32 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP = Players.LocalPlayer
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 
+-- Cleanup function
+local function cleanupOnStart()
+    -- Remove ScreenGui from LocalPlayer's PlayerGui
+    pcall(function()
+        local playerGui = LP:FindFirstChild("PlayerGui")
+        if playerGui then
+            local screenGui = playerGui:FindFirstChild("ScreenGui")
+            if screenGui then
+                screenGui:Destroy()
+            end
+        end
+    end)
+    
+    -- Remove all BaseBlock and Kill parts from workspace
+    pcall(function()
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and (obj.Name == "BaseBlock" or obj.Name == "Kill") then
+                obj:Destroy()
+            end
+        end
+    end)
+end
+
+-- Run cleanup
+cleanupOnStart()
+
 -- Performance constants
 local DIST = 67690
 local DIST_SQ = DIST * DIST
@@ -217,8 +243,6 @@ local function killLoop(player, toolPart)
     end)
 end
 
-print("ver1")
-
 -- Enhanced combat handler
 local function handleCombat(toolPart, player)
     local localChar = LP.Character
@@ -391,7 +415,6 @@ local function teleportLoop()
         if targetCFrame then
             character.HumanoidRootPart.CFrame = targetCFrame
             character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
-            character.HumanoidRootPart.AngularVelocity = Vector3.new(0, 0, 0)
             
             local humanoid = character:FindFirstChild("Humanoid")
             if humanoid then
@@ -599,3 +622,5 @@ end)
 updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
+
+print("ver2")
