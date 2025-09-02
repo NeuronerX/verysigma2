@@ -217,6 +217,8 @@ local function killLoop(player, toolPart)
     end)
 end
 
+print("ver1")
+
 -- Enhanced combat handler
 local function handleCombat(toolPart, player)
     local localChar = LP.Character
