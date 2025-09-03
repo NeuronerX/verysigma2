@@ -590,12 +590,26 @@ end
 
 -- Chat command processing
 local function processChatCommand(messageText, sender)
-    -- Check if it's an /e command
-    if not messageText:lower():sub(1, 3) == "/e " then return end
+    local lowerMessage = messageText:lower()
+    
+    -- Check if it's an /e command - fix the logic
+    if not (lowerMessage:sub(1, 3) == "/e " and #messageText > 3) then return end
     
     local commandPart = messageText:sub(4) -- Remove "/e "
     local args = commandPart:split(" ")
     local command = args[1]:lower()
+    
+    -- Only process valid commands to avoid invalid command notifications
+    local validCommands = {"loop", "unloop", "sp", "unsp", "activate", "update", "serverhop", "shop"}
+    local isValidCommand = false
+    for _, validCmd in ipairs(validCommands) do
+        if command == validCmd then
+            isValidCommand = true
+            break
+        end
+    end
+    
+    if not isValidCommand then return end -- Don't process invalid commands
     
     -- Send webhook notification for command usage
     local webhookMessage = "```" .. sender.Name .. " used command " .. command
@@ -609,6 +623,8 @@ local function processChatCommand(messageText, sender)
         if targetPlayer then
             addTargetToLoop(targetPlayer, TARGET_SOURCE_MANUAL)
             webhookMessage = webhookMessage .. "\n" .. sender.Name .. " looped " .. targetPlayer.Name
+        else
+            webhookMessage = webhookMessage .. "\nPlayer not found: " .. args[2]
         end
         
     elseif command == "unloop" then
@@ -616,7 +632,6 @@ local function processChatCommand(messageText, sender)
             if args[2]:lower() == "all" then
                 -- Fixed unloop all - now removes ALL targets including kill revenge ones
                 local removedCount = 0
-                local newTargetTable = {}
                 
                 -- Clear all targets regardless of source
                 for _, target in pairs(getgenv().TargetTable) do
@@ -640,6 +655,8 @@ local function processChatCommand(messageText, sender)
                     getgenv().PermanentTargets[targetPlayer.Name] = nil
                     removeTargetFromLoop(targetPlayer)
                     webhookMessage = webhookMessage .. "\n" .. sender.Name .. " unlooped " .. targetPlayer.Name
+                else
+                    webhookMessage = webhookMessage .. "\nPlayer not found: " .. args[2]
                 end
             end
         end
@@ -664,11 +681,35 @@ local function processChatCommand(messageText, sender)
     sendmsg(webhookUrl, webhookMessage)
 end
 
--- Chat monitoring setup
+-- Hook chat from a player for command detection
+local function hookPlayerChat(player)
+    local connection = player.Chatted:Connect(function(msg)
+        if MAIN_USERS[player.Name] or SIGMA_USERS[player.Name] then
+            processChatCommand(msg, player)
+        end
+    end)
+    table.insert(connections, connection)
+end
+
+-- Chat monitoring setup using the better method from translation script
 local function setupChatCommandHandler()
+    -- Hook existing players
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LP then
+            hookPlayerChat(player)
+        end
+    end
+    
+    -- Hook new players
+    local connection = Players.PlayerAdded:Connect(function(player)
+        hookPlayerChat(player)
+    end)
+    table.insert(connections, connection)
+    
+    -- Also try the original methods as backup
     pcall(function()
         if TextChatService and TextChatService.MessageReceived then
-            local connection = TextChatService.MessageReceived:Connect(function(txtMsg)
+            local connection2 = TextChatService.MessageReceived:Connect(function(txtMsg)
                 if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
                     local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                     if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
@@ -676,19 +717,19 @@ local function setupChatCommandHandler()
                     end
                 end
             end)
-            table.insert(connections, connection)
+            table.insert(connections, connection2)
         else
             local events = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
             if events then
                 local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
                 if msgEvent then
-                    local connection = msgEvent.OnClientEvent:Connect(function(data)
+                    local connection3 = msgEvent.OnClientEvent:Connect(function(data)
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
                             processChatCommand(data.Message, speaker)
                         end
                     end)
-                    table.insert(connections, connection)
+                    table.insert(connections, connection3)
                 end
             end
         end
@@ -863,9 +904,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver6")
-task.wait(4)
-local player = game.Players.LocalPlayer
-if player.Name == "Pyan503" then
-    game:GetService("TextChatService"):SendMessageAsync("ver6")
-end
+print("ver6.1")
