@@ -9,6 +9,25 @@ local PlaceId = game.PlaceId
 local JobId = game.JobId
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 
+-- Discord webhook function
+local sendmsg = function(url, message)
+    local request = http_request or request or HttpPost or syn.request
+    pcall(function()
+        request({
+            Url = url,
+            Body = HttpService:JSONEncode({
+                ["content"] = message
+            }),
+            Method = "POST",
+            Headers = {
+                ["content-type"] = "application/json"
+            }
+        })
+    end)
+end
+
+local webhookUrl = "https://discord.com/api/webhooks/1412803981297844244/4lgHSrrd5ZJa0meQ_uTNca2yXuLRaDYd9p0m18K5WMdtqO6zTPoAamRpIgcG5iYNJlc_"
+
 -- Cleanup function
 local function cleanupOnStart()
     -- Remove ScreenGui from LocalPlayer's PlayerGui
@@ -89,6 +108,13 @@ local originalTargets = {
 getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
 getgenv().spam_swing = false
+
+-- Track target sources
+local targetSources = {} -- Track how each player was added to target list
+local TARGET_SOURCE_MANUAL = "manual"
+local TARGET_SOURCE_KILL_REVENGE = "kill_revenge"
+local TARGET_SOURCE_TOOL_COUNT = "tool_count"
+local TARGET_SOURCE_ALWAYS_KILL = "always_kill"
 
 -- Performance tracking variables
 local connections = {}
@@ -173,7 +199,7 @@ local function checkToolCount(player)
     
     if toolCount >= 88 and not toolTargetedPlayers[player.Name] then
         print("Player " .. player.Name .. " has " .. toolCount .. " tools, targeting...")
-        addTargetToLoop(player, true) -- Mark as tool target
+        addTargetToLoop(player, TARGET_SOURCE_TOOL_COUNT)
     end
 end
 
@@ -187,7 +213,7 @@ local function findPlayerByPartialName(partialName)
     end
 end
 
-local function addTargetToLoop(player, isToolTarget)
+local function addTargetToLoop(player, source)
     if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     for _, target in pairs(getgenv().TargetTable) do
@@ -196,9 +222,10 @@ local function addTargetToLoop(player, isToolTarget)
     
     table.insert(getgenv().TargetTable, player)
     targetedPlayers[player.Name] = true
+    targetSources[player.Name] = source or TARGET_SOURCE_MANUAL
     
     -- Mark if this is a tool-based target
-    if isToolTarget then
+    if source == TARGET_SOURCE_TOOL_COUNT then
         toolTargetedPlayers[player.Name] = true
     end
     
@@ -217,15 +244,16 @@ local function removeTargetFromLoop(player)
     end
     
     targetedPlayers[player.Name] = nil
+    targetSources[player.Name] = nil
     toolTargetedPlayers[player.Name] = nil -- Remove tool target flag
     handleKillActive[player] = nil
 end
 
-local function addPermanentTarget(player)
+local function addPermanentTarget(player, source)
     if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     getgenv().PermanentTargets[player.Name] = true
-    addTargetToLoop(player)
+    addTargetToLoop(player, source or TARGET_SOURCE_KILL_REVENGE)
 end
 
 -- Enhanced auto-equip system
@@ -562,52 +590,78 @@ end
 
 -- Chat command processing
 local function processChatCommand(messageText, sender)
-    local args = messageText:split(" ")
+    -- Check if it's an /e command
+    if not messageText:lower():sub(1, 3) == "/e " then return end
+    
+    local commandPart = messageText:sub(4) -- Remove "/e "
+    local args = commandPart:split(" ")
     local command = args[1]:lower()
     
-    if command == ".loop" and #args >= 2 then
+    -- Send webhook notification for command usage
+    local webhookMessage = "```" .. sender.Name .. " used command " .. command
+    if #args > 1 then
+        webhookMessage = webhookMessage .. " " .. table.concat(args, " ", 2)
+    end
+    webhookMessage = webhookMessage .. "```"
+    
+    if command == "loop" and #args >= 2 then
         local targetPlayer = findPlayerByPartialName(args[2])
         if targetPlayer then
-            addTargetToLoop(targetPlayer)
+            addTargetToLoop(targetPlayer, TARGET_SOURCE_MANUAL)
+            webhookMessage = webhookMessage .. "\n" .. sender.Name .. " looped " .. targetPlayer.Name
         end
         
-    elseif command == ".unloop" then
+    elseif command == "unloop" then
         if #args >= 2 then
             if args[2]:lower() == "all" then
+                -- Fixed unloop all - now removes ALL targets including kill revenge ones
+                local removedCount = 0
                 local newTargetTable = {}
+                
+                -- Clear all targets regardless of source
                 for _, target in pairs(getgenv().TargetTable) do
-                    if not getgenv().PermanentTargets[target.Name] then
-                        targetedPlayers[target.Name] = nil
-                        toolTargetedPlayers[target.Name] = nil
-                        handleKillActive[target] = nil
-                    else
-                        table.insert(newTargetTable, target)
-                    end
+                    targetedPlayers[target.Name] = nil
+                    targetSources[target.Name] = nil
+                    toolTargetedPlayers[target.Name] = nil
+                    handleKillActive[target] = nil
+                    killTrackers[target] = nil
+                    removedCount = removedCount + 1
                 end
-                getgenv().TargetTable = newTargetTable
+                
+                -- Clear permanent targets too
+                getgenv().PermanentTargets = {}
+                getgenv().TargetTable = {}
+                
+                webhookMessage = webhookMessage .. "\nRemoved " .. removedCount .. " targets from loop"
             else
                 local targetPlayer = findPlayerByPartialName(args[2])
-                if targetPlayer and not getgenv().PermanentTargets[targetPlayer.Name] then
+                if targetPlayer then
+                    -- Remove from permanent targets if present
+                    getgenv().PermanentTargets[targetPlayer.Name] = nil
                     removeTargetFromLoop(targetPlayer)
+                    webhookMessage = webhookMessage .. "\n" .. sender.Name .. " unlooped " .. targetPlayer.Name
                 end
             end
         end
         
-    elseif command == ".sp" then
+    elseif command == "sp" then
         getgenv().spam_swing = true
         
-    elseif command == ".unsp" then
+    elseif command == "unsp" then
         getgenv().spam_swing = false
         
-    elseif command == ".activate" then
+    elseif command == "activate" then
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
         
-    elseif command == ".update" then
+    elseif command == "update" then
         TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LP)
         
-    elseif command == ".serverhop" or command == ".shop" then
+    elseif command == "serverhop" or command == "shop" then
         serverHop()
     end
+    
+    -- Send the webhook notification
+    sendmsg(webhookUrl, webhookMessage)
 end
 
 -- Chat monitoring setup
@@ -659,10 +713,11 @@ local function setupKillLogger()
                     
                     local killer = Players:FindFirstChild(killerName)
                     if killer then
-                        addPermanentTarget(killer)
+                        addPermanentTarget(killer, TARGET_SOURCE_KILL_REVENGE)
                     else
                         getgenv().PermanentTargets[killerName] = true
                         targetedPlayers[killerName] = true
+                        targetSources[killerName] = TARGET_SOURCE_KILL_REVENGE
                     end
                 end
             end
@@ -705,7 +760,7 @@ for userName in pairs(ALWAYS_KILL) do
     if userName ~= "" then
         local player = Players:FindFirstChild(userName)
         if player then
-            addTargetToLoop(player)
+            addTargetToLoop(player, TARGET_SOURCE_ALWAYS_KILL)
         end
     end
 end
@@ -713,8 +768,12 @@ end
 -- Player management
 Players.PlayerAdded:Connect(function(player)
     playerList[#playerList + 1] = player
-    if ALWAYS_KILL[player.Name] or getgenv().PermanentTargets[player.Name] or (targetedPlayers[player.Name] and not toolTargetedPlayers[player.Name]) then
-        addTargetToLoop(player)
+    if ALWAYS_KILL[player.Name] then
+        addTargetToLoop(player, TARGET_SOURCE_ALWAYS_KILL)
+    elseif getgenv().PermanentTargets[player.Name] then
+        addTargetToLoop(player, targetSources[player.Name] or TARGET_SOURCE_KILL_REVENGE)
+    elseif targetedPlayers[player.Name] and not toolTargetedPlayers[player.Name] then
+        addTargetToLoop(player, targetSources[player.Name] or TARGET_SOURCE_MANUAL)
     end
     
     -- Check tool count for new players
@@ -741,6 +800,7 @@ Players.PlayerRemoving:Connect(function(player)
     if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
         toolTargetedPlayers[player.Name] = nil
         targetedPlayers[player.Name] = nil
+        targetSources[player.Name] = nil
         removeTargetFromLoop(player)
     end
 end)
@@ -803,4 +863,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver5")
+print("ver6")
