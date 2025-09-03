@@ -869,4 +869,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver6.3")
+print("ver6.4")
