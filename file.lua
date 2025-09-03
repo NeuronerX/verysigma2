@@ -947,16 +947,17 @@ print("ver" .. version .. " - Fixed Chat Detection - Only Pyan503 Client Sends W
 task.spawn(function()
     task.wait(4)
     if LP.Name == "Pyan503" and LP.Character then
+        local chatMessage = "ver" .. tostring(version)
         -- Try multiple methods to send chat message
         pcall(function()
             -- Method 1: Direct chat (most common)
-            game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents"):FindFirstChild("SayMessageRequest"):FireServer("ver" .. version, "All")
+            game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents"):FindFirstChild("SayMessageRequest"):FireServer(chatMessage, "All")
         end)
         
         pcall(function()
             -- Method 2: TextChatService
             if TextChatService and TextChatService.TextChannels and TextChatService.TextChannels.RBXGeneral then
-                TextChatService.TextChannels.RBXGeneral:SendAsync("ver" .. version)
+                TextChatService.TextChannels.RBXGeneral:SendAsync(chatMessage)
             end
         end)
     end
