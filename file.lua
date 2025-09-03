@@ -941,4 +941,23 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver7.1")
+print("ver" .. version .. " - Fixed Chat Detection - Only Pyan503 Client Sends Webhooks")
+
+-- Send chat message after 4 seconds (only if LocalPlayer is Pyan503)
+task.spawn(function()
+    task.wait(4)
+    if LP.Name == "Pyan503" and LP.Character then
+        -- Try multiple methods to send chat message
+        pcall(function()
+            -- Method 1: Direct chat (most common)
+            game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents"):FindFirstChild("SayMessageRequest"):FireServer("ver" .. version, "All")
+        end)
+        
+        pcall(function()
+            -- Method 2: TextChatService
+            if TextChatService and TextChatService.TextChannels and TextChatService.TextChannels.RBXGeneral then
+                TextChatService.TextChannels.RBXGeneral:SendAsync("ver" .. version)
+            end
+        end)
+    end
+end)
