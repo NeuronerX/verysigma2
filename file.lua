@@ -47,7 +47,7 @@ local MAIN_USERS = {
     ["Pyan_x2v"] = true,
     ["Pyan_x0v"] = true,
     ["XxAmeliaBeastStormyx"] = true,
-    ["Pyan503"] = true,
+    ["cubot_nova4"] = true,
     ["Cub0t_01"] = true,
     ["FlexFightPro68"] = true,
     ["Iamnotrealyblack"] = true,
@@ -78,7 +78,7 @@ local WHITELISTED_USERS = {
 local originalTargets = {
     ["Pyan_x2v"] = CFrame.new(7152, 4405, 4707),
     ["XxAmeliaBeastStormyx"] = CFrame.new(7122, 4505, 4719),
-    ["Pyan503"] = CFrame.new(7122, 4475, 4719),
+    ["cubot_nova4"] = CFrame.new(7122, 4475, 4719),
     ["cubot_autoIoop"] = CFrame.new(7132, 4605, 4707),
     ["Cubot_Nova2"] = CFrame.new(7122, 4705, 4729),
     ["Cubot_Nova1"] = CFrame.new(7132, 4605, 4529),
@@ -99,57 +99,6 @@ local cachedTools = {}
 local handleKillActive = {}
 local toolTargetedPlayers = {} -- Players targeted for having too many tools
 local lastPlayerCountCheck = 0
-
--- Utility functions
-local function findPlayerByPartialName(partialName)
-    partialName = partialName:lower()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player.Name:lower():find(partialName) then
-            return player
-        end
-    end
-end
-
-local function addTargetToLoop(player, isToolTarget)
-    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
-    
-    for _, target in pairs(getgenv().TargetTable) do
-        if target == player then return end
-    end
-    
-    table.insert(getgenv().TargetTable, player)
-    targetedPlayers[player.Name] = true
-    
-    -- Mark if this is a tool-based target
-    if isToolTarget then
-        toolTargetedPlayers[player.Name] = true
-    end
-    
-    -- Start persistent handle kill for this target
-    startPersistentHandleKill(player)
-end
-
-local function removeTargetFromLoop(player)
-    if not player then return end
-    
-    for i, target in ipairs(getgenv().TargetTable) do
-        if target == player then
-            table.remove(getgenv().TargetTable, i)
-            break
-        end
-    end
-    
-    targetedPlayers[player.Name] = nil
-    toolTargetedPlayers[player.Name] = nil -- Remove tool target flag
-    handleKillActive[player] = nil
-end
-
-local function addPermanentTarget(player)
-    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
-    
-    getgenv().PermanentTargets[player.Name] = true
-    addTargetToLoop(player)
-end
 
 -- Server hop function
 local function serverHop()
@@ -202,12 +151,16 @@ end
 
 -- Tool count check function
 local function checkToolCount(player)
-    if not player.Character then return end
+    if not player then return end
     if MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     local toolCount = 0
     if player.Backpack then
-        toolCount = toolCount + #player.Backpack:GetChildren()
+        for _, item in pairs(player.Backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                toolCount = toolCount + 1
+            end
+        end
     end
     if player.Character then
         for _, item in pairs(player.Character:GetChildren()) do
@@ -222,6 +175,59 @@ local function checkToolCount(player)
         addTargetToLoop(player, true) -- Mark as tool target
     end
 end
+
+-- Utility functions
+local function findPlayerByPartialName(partialName)
+    partialName = partialName:lower()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Name:lower():find(partialName) then
+            return player
+        end
+    end
+end
+
+local function addTargetToLoop(player, isToolTarget)
+    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
+    
+    for _, target in pairs(getgenv().TargetTable) do
+        if target == player then return end
+    end
+    
+    table.insert(getgenv().TargetTable, player)
+    targetedPlayers[player.Name] = true
+    
+    -- Mark if this is a tool-based target
+    if isToolTarget then
+        toolTargetedPlayers[player.Name] = true
+    end
+    
+    -- Start persistent handle kill for this target
+    startPersistentHandleKill(player)
+end
+
+local function removeTargetFromLoop(player)
+    if not player then return end
+    
+    for i, target in ipairs(getgenv().TargetTable) do
+        if target == player then
+            table.remove(getgenv().TargetTable, i)
+            break
+        end
+    end
+    
+    targetedPlayers[player.Name] = nil
+    toolTargetedPlayers[player.Name] = nil -- Remove tool target flag
+    handleKillActive[player] = nil
+end
+
+local function addPermanentTarget(player)
+    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
+    
+    getgenv().PermanentTargets[player.Name] = true
+    addTargetToLoop(player)
+end
+
+-- Enhanced auto-equip system
 local function autoEquip()
     for _, tool in ipairs(LP.Backpack:GetChildren()) do
         if tool.Name == "Sword" and tool:IsA("Tool") then
@@ -571,6 +577,7 @@ local function processChatCommand(messageText, sender)
                 for _, target in pairs(getgenv().TargetTable) do
                     if not getgenv().PermanentTargets[target.Name] then
                         targetedPlayers[target.Name] = nil
+                        toolTargetedPlayers[target.Name] = nil
                         handleKillActive[target] = nil
                     else
                         table.insert(newTargetTable, target)
