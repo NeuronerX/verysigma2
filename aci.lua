@@ -48,6 +48,7 @@ local cachedTools = {}
 local handleKillActive = {}
 
 -- Check if player is a valid target (now targets all except protected)
+-- Check if player is a valid target (now targets all except protected & whitelist & protected user's friends)
 local function isValidTarget(player)
     if player == LP then
         return false
@@ -55,13 +56,23 @@ local function isValidTarget(player)
     
     -- Check whitelist
     for _, whitelistedName in ipairs(getgenv().WHITELIST) do
-        if player.Name == whitelistedName then
+        if string.lower(player.Name) == string.lower(whitelistedName) then
             return false
         end
     end
     
-    -- Check if player is a friend of protected user
-    if friendsLoaded and friendsList[player.Name] then
+    -- Check if player is PROTECTED_USER_ID themselves
+    if player.UserId == PROTECTED_USER_ID then
+        return false
+    end
+    
+    -- If friends are loaded, check them
+    if friendsLoaded then
+        if friendsList[player.Name] then
+            return false
+        end
+    else
+        -- While friends are not loaded, just be safe: don't attack anyone yet
         return false
     end
     
