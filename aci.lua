@@ -1,230 +1,393 @@
--- Loop Kill Everyone Script with Friend Protection (FIXED)
--- Automatically activates on execution and protects friends of user ID 9260414163
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local LP = Players.LocalPlayer
 
--- Configuration
-local PROTECTED_USER_ID = 9260414163
-local shouldStop = false
-
--- Initialize global variables
-getgenv().LoopKillAll = true -- Automatically enable on execution
+-- WHITELIST CONFIGURATION
 getgenv().WHITELIST = {
     "e5c4qe",
     "xL1fe_r",
     "xL1v3_r",
-    "xLiv3_r",
-    "Oliv3rTig3r2008"
+    "xLiv3_r"
 }
-getgenv().ProtectedPlayers = {} -- Store friends of protected user
 
--- Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local PROTECTED_USER_ID = 9260414163
+local friendsList = {}
+local friendsLoaded = false
 
--- Function to get friends of the protected user (FIXED)
-local function getFriendsOfUser(userId)
-    local success, result = pcall(function()
-        local friendPages = Players:GetFriendsAsync(userId)
-        local friends = {}
-        
-        while true do
-            local currentPage = friendPages:GetCurrentPage()
-            for _, friend in pairs(currentPage) do
-                table.insert(friends, friend.Username)
-            end
+-- Function to load friends of protected user
+local function loadFriends()
+    task.spawn(function()
+        local success, result = pcall(function()
+            local url = "https://friends.roblox.com/v1/users/" .. PROTECTED_USER_ID .. "/friends"
+            local response = game:HttpGet(url)
+            local data = HttpService:JSONDecode(response)
             
-            if friendPages.IsFinished then
-                break
+            friendsList = {}
+            if data and data.data then
+                for _, friend in ipairs(data.data) do
+                    friendsList[friend.name] = true
+                end
             end
-            friendPages:AdvanceToNextPageAsync()
-        end
-        
-        return friends
-    end)
-    
-    if success then
-        return result
-    else
-        warn("Failed to get friends list for user ID: " .. userId)
-        return {}
-    end
-end
-
--- Function to check if player should be protected
-local function isPlayerProtected(player)
-    -- Check if player is the local player (ALWAYS PROTECT SELF)
-    if player == Players.LocalPlayer then
-        return true
-    end
-    
-    -- Check if player is in whitelist (ALWAYS PROTECT WHITELIST)
-    for _, whitelistedName in pairs(getgenv().WHITELIST) do
-        if player.Name == whitelistedName then
-            return true
-        end
-    end
-    
-    -- Check if player is in protected friends list (ALWAYS PROTECT FRIENDS)
-    for _, friendName in pairs(getgenv().ProtectedPlayers) do
-        if player.Name == friendName then
-            return true
-        end
-    end
-    
-    return false
-end
-
--- Function to update protected players list (FIXED)
-local function updateProtectedPlayers()
-    spawn(function()
-        local success, friends = pcall(function()
-            return getFriendsOfUser(PROTECTED_USER_ID)
+            friendsLoaded = true
         end)
         
-        if success then
-            getgenv().ProtectedPlayers = friends
+        if not success then
+            friendsLoaded = true -- Still set to true to continue execution
         end
     end)
 end
 
--- Utility Functions
-function CheckIfEquipped()
-    local character = Players.LocalPlayer.Character
-    if not character then return end
+-- Pre-allocated tables for performance
+local playerList = {}
+local killTrackers = {}
+local tempParts = {}
+local cachedTools = {}
+
+-- PERSISTENT HANDLE KILL SYSTEM
+local handleKillActive = {}
+
+-- Check if player is a valid target (now targets all except protected)
+local function isValidTarget(player)
+    if player == LP then
+        return false
+    end
     
-    if not character:FindFirstChild("Sword") then
-        local backpack = Players.LocalPlayer.Backpack
-        local sword = backpack:FindFirstChild("Sword")
-        if sword then
-            sword.Parent = character
+    -- Check whitelist
+    for _, whitelistedName in ipairs(getgenv().WHITELIST) do
+        if player.Name == whitelistedName then
+            return false
         end
     end
     
-    local sword = character:FindFirstChild("Sword")
-    if sword and sword:FindFirstChild("Handle") then
-        sword.Handle.Massless = true
-        sword.Handle.CanCollide = false
-        sword.Handle.Size = Vector3.new(10, 10, 10)
+    -- Check if player is a friend of protected user
+    if friendsLoaded and friendsList[player.Name] then
+        return false
+    end
+    
+    -- Target all other players
+    return true
+end
+
+-- Fast batch fire touch with proper sequencing
+local function batchFireTouch(toolPart, targetParts)
+    if not firetouchinterest then
+        return
+    end
+    
+    pcall(function() toolPart.Parent:Activate() end)
+    
+    -- Direct sequential firing without nested loops
+    for i = 1, #targetParts do
+        local part = targetParts[i]
+        if part and part.Parent then
+            pcall(function()
+                firetouchinterest(toolPart, part, 0)
+                firetouchinterest(toolPart, part, 1)
+                firetouchinterest(toolPart, part, 0)
+                firetouchinterest(toolPart, part, 1)
+            end)
+        end
+    end
+    
+    pcall(function() toolPart.Parent:Activate() end)
+end
+
+-- Modified tool handle setup
+local function setupToolHandle(tool)
+    if not tool:IsA("Tool") then return end
+    
+    local function modifyHandle(handle)
+        handle.Massless = true
+        handle.CanCollide = false
+        cachedTools[tool] = handle
+    end
+    
+    local handle = tool:FindFirstChild("Handle")
+    if handle then
+        modifyHandle(handle)
+    else
+        local connection
+        connection = tool.ChildAdded:Connect(function(child)
+            if child.Name == "Handle" then
+                modifyHandle(child)
+                connection:Disconnect()
+            end
+        end)
     end
 end
 
-function BringTarget(targetPart)
-    if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        targetPart.CFrame = Players.LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 1, -4)
+-- Enhanced kill loop with consistent timing
+local function killLoop(player, toolPart)
+    if killTrackers[player] then return end
+    killTrackers[player] = true
+    
+    task.spawn(function()
+        local consecutiveFailures = 0
+        
+        while killTrackers[player] and consecutiveFailures < 10 do
+            local localChar = LP.Character
+            local targetChar = player.Character
+            
+            if not (localChar and targetChar) then 
+                consecutiveFailures = consecutiveFailures + 1
+                task.wait(0.1)
+                continue 
+            end
+            
+            local tool = localChar:FindFirstChildWhichIsA("Tool")
+            local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
+            local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
+            
+            if not (tool and tool.Parent == localChar and toolPart.Parent and humanoid and humanoid.Health > 0 and rootPart) then
+                consecutiveFailures = consecutiveFailures + 1
+                task.wait(0.1)
+                continue
+            end
+            
+            -- Reset failure counter on success
+            consecutiveFailures = 0
+            
+            -- Multiple tool activations
+            task.spawn(function()
+                for _ = 1, 5 do
+                    pcall(function() tool:Activate() end)
+                end
+            end)
+            
+            -- Batch collect all parts
+            table.clear(tempParts)
+            for _, part in ipairs(targetChar:GetDescendants()) do
+                if part:IsA("BasePart") and part.Parent then
+                    tempParts[#tempParts + 1] = part
+                end
+            end
+            
+            -- Enhanced batch fire touch
+            if #tempParts > 0 then
+                batchFireTouch(toolPart, tempParts)
+            end
+            
+            -- Consistent timing
+            RunService.Heartbeat:Wait()
+        end
+        killTrackers[player] = nil
+    end)
+end
+
+-- Enhanced combat handler
+local function handleCombat(toolPart, player)
+    local localChar = LP.Character
+    local targetChar = player.Character
+    
+    if not (localChar and targetChar) then return end
+    
+    local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
+    local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
+    
+    if not (humanoid and rootPart and humanoid.Health > 0) then return end
+    
+    -- Enhanced tool activations
+    task.spawn(function()
+        for _ = 1, 8 do
+            pcall(function() 
+                toolPart.Parent:Activate()
+            end)
+        end
+    end)
+    
+    -- Collect all target parts
+    table.clear(tempParts)
+    for _, part in ipairs(targetChar:GetDescendants()) do
+        if part:IsA("BasePart") and part.Parent then
+            tempParts[#tempParts + 1] = part
+        end
+    end
+    
+    -- Enhanced damage application
+    if #tempParts > 0 then
+        task.spawn(function()
+            batchFireTouch(toolPart, tempParts)
+        end)
+    end
+    
+    -- Start enhanced kill loop
+    if not killTrackers[player] then
+        killLoop(player, toolPart)
     end
 end
 
-function SwingTool()
-    spawn(function()
-        local character = Players.LocalPlayer.Character
-        if character then
-            local sword = character:FindFirstChild("Sword")
-            if sword then
-                sword:Activate()
-                wait(0.002)
-                sword:Activate()
+-- Enhanced heartbeat function with better targeting
+local function onHeartbeat()
+    local char = LP.Character
+    if not char then return end
+    
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    -- Process all tools with enhanced targeting
+    for tool, handle in pairs(cachedTools) do
+        if tool.Parent == char and handle.Parent then
+            for i = 1, #playerList do
+                local player = playerList[i]
+                if isValidTarget(player) and player.Character then
+                    local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+                    local targetHumanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                    
+                    if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
+                        task.spawn(function()
+                            handleCombat(handle, player)
+                        end)
+                    end
+                end
             end
         end
-    end)
+    end
 end
 
--- Chat command processing removed - script runs continuously
+-- Connection management
+local heartbeatConnection
+local function setupHeartbeat()
+    if heartbeatConnection then
+        heartbeatConnection:Disconnect()
+    end
+    heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
+end
 
--- Main Loop Kill Everyone Function (FIXED)
-local function startLoopKillEveryone()
-    -- Update protected players list initially
-    updateProtectedPlayers()
+-- Enhanced character setup
+local function setupCharacter(character)
+    -- Wait for character to fully load
+    character:WaitForChild("HumanoidRootPart", 10)
     
-    -- Update protected list every 15 seconds - runs indefinitely
-    spawn(function()
-        while true do
-            wait(15)
-            updateProtectedPlayers()
+    -- Setup existing tools
+    for _, tool in ipairs(character:GetChildren()) do
+        if tool:IsA("Tool") then
+            setupToolHandle(tool)
+        end
+    end
+    
+    -- Monitor new tools
+    character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            setupToolHandle(child)
         end
     end)
     
-    -- Main loop kill logic - runs indefinitely
-    spawn(function()
-        while true do
-            if getgenv().LoopKillAll then
-                for _, player in pairs(Players:GetPlayers()) do
-                    -- DOUBLE CHECK - Skip if player is protected
-                    if isPlayerProtected(player) then
-                        continue -- Skip this player entirely
-                    end
-                    
-                    -- Only target non-protected players
-                    if player.Character and 
-                       Players.LocalPlayer.Character and 
-                       Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+    setupHeartbeat()
+end
+
+-- Player list management with batch updates
+local function updatePlayerList()
+    table.clear(playerList)
+    local players = Players:GetPlayers()
+    for i = 1, #players do
+        playerList[i] = players[i]
+    end
+end
+
+-- FAST AND EFFICIENT HANDLE KILL SYSTEM
+local function startPersistentHandleKill(targetPlayer)
+    if handleKillActive[targetPlayer] then return end
+    handleKillActive[targetPlayer] = true
+    
+    task.spawn(function()
+        while handleKillActive[targetPlayer] do
+            local char = LP.Character
+            if char then
+                local tool = char:FindFirstChildWhichIsA("Tool")
+                
+                if tool then
+                    local handle = tool:FindFirstChild("Handle")
+                    if handle and targetPlayer.Character then
+                        local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+                        local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
                         
-                        -- Try to target Part objects first
-                        local targetPart = player.Character:FindFirstChildOfClass("Part")
-                        if targetPart then
-                            local humanoid = player.Character:FindFirstChild("Humanoid")
-                            if not humanoid or humanoid.Health > 0 then
-                                CheckIfEquipped()
-                                BringTarget(targetPart)
-                                SwingTool()
-                            end
-                        else
-                            -- Try to target MeshPart objects if Part not found
-                            local meshPart = player.Character:FindFirstChildOfClass("MeshPart")
-                            if meshPart then
-                                local humanoid = player.Character:FindFirstChild("Humanoid")
-                                if not humanoid or humanoid.Health > 0 then
-                                    CheckIfEquipped()
-                                    BringTarget(meshPart)
-                                    SwingTool()
-                                end
+                        if root and humanoid and humanoid.Health > 0 then
+                            if firetouchinterest then
+                                -- Ultra fast killing - direct hits to critical parts
+                                pcall(function()
+                                    -- Root part hits
+                                    firetouchinterest(handle, root, 0)
+                                    firetouchinterest(handle, root, 1)
+                                    firetouchinterest(handle, root, 0)
+                                    firetouchinterest(handle, root, 1)
+                                    
+                                    -- Head hits for instant kill
+                                    local head = targetPlayer.Character:FindFirstChild("Head")
+                                    if head then
+                                        firetouchinterest(handle, head, 0)
+                                        firetouchinterest(handle, head, 1)
+                                        firetouchinterest(handle, head, 0)
+                                        firetouchinterest(handle, head, 1)
+                                    end
+                                    
+                                    -- Torso hits
+                                    local torso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso")
+                                    if torso then
+                                        firetouchinterest(handle, torso, 0)
+                                        firetouchinterest(handle, torso, 1)
+                                    end
+                                end)
+                            else
+                                -- Fast fallback
+                                pcall(function() tool:Activate() end)
+                                pcall(function() tool:Activate() end)
                             end
                         end
                     end
                 end
             end
-            wait(0.1) -- Small delay to prevent lag
+            task.wait() -- Keep it fast but not laggy
         end
     end)
 end
 
--- One-click kill everyone function (PROTECTS WHITELIST AND FRIENDS)
-function killEveryoneOnce()
-    spawn(function()
-        local character = Players.LocalPlayer.Character
-        local backpack = Players.LocalPlayer.Backpack
-        
-        if backpack:FindFirstChild("Sword") then
-            backpack:FindFirstChild("Sword").Parent = character
+-- Auto-start handle kill for all valid targets
+local function initializeHandleKillForTargets()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if isValidTarget(player) then
+            startPersistentHandleKill(player)
         end
-        
-        if character then
-            local sword = character:WaitForChild("Sword", 5)
-            if sword and sword:FindFirstChild("Handle") then
-                -- Store original size
-                local originalSize = sword.Handle.Size
-                
-                -- Make sword massive
-                sword.Handle.Size = Vector3.new(1000000000, 1000000000, 1000000000)
-                sword.Handle.Massless = true
-                
-                sword:Activate()
-                wait(0.05)
-                sword:Activate()
-                wait(0.05)
-                sword:Activate()
-                wait(0.05)
-                
-                -- Restore original size
-                sword.Handle.Size = originalSize
-            end
-        end
-    end)
+    end
 end
 
--- Control functions removed - script runs continuously once started
+-- Character added function
+local function onCharacterAdded(character)
+    setupCharacter(character)
+    initializeHandleKillForTargets()
+end
 
--- Auto-execute when script runs
-startLoopKillEveryone()
+-- Enhanced character setup
+LP.CharacterAdded:Connect(onCharacterAdded)
+if LP.Character then
+    onCharacterAdded(LP.Character)
+end
 
--- Expose essential functions globally
-getgenv().killEveryoneOnce = killEveryoneOnce
-getgenv().updateProtectedPlayers = updateProtectedPlayers
+-- Enhanced player management
+Players.PlayerAdded:Connect(function(player)
+    playerList[#playerList + 1] = player
+    if isValidTarget(player) then
+        startPersistentHandleKill(player)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    for i = #playerList, 1, -1 do
+        if playerList[i] == player then
+            table.remove(playerList, i)
+            killTrackers[player] = nil
+            break
+        end
+    end
+    handleKillActive[player] = nil
+end)
+
+-- Load friends list and initialize
+loadFriends()
+
+-- Wait a moment for friends to load, then initialize
+task.wait(1)
+updatePlayerList()
+initializeHandleKillForTargets()
+
+warn("activated")
