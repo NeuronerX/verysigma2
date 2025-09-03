@@ -633,15 +633,11 @@ local function processChatCommand(messageText, sender)
             else
                 local targetPlayer = findPlayerByPartialName(args[2])
                 if targetPlayer then
-                    -- Only allow unloping if not a permanent target
+                    -- Only allow unlooping if not a permanent target
                     if not getgenv().PermanentTargets[targetPlayer.Name] then
                         removeTargetFromLoop(targetPlayer)
                         pcall(function()
                             sendmsg(WEBHOOK_URL, sender.Name .. " unlooped " .. targetPlayer.Name)
-                        end)
-                    else
-                        pcall(function()
-                            sendmsg(WEBHOOK_URL, sender.Name .. " tried to unloop " .. targetPlayer.Name .. " (permanent target - denied)")
                         end)
                     end
                 end
@@ -873,4 +869,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver6.2")
+print("ver6.3")
