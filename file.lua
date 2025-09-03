@@ -60,6 +60,7 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20  -- Increased for consistency
 local FT_TIMES = 30   -- Increased for consistency
 local SWORD_NAME = "Sword"
+local version = "7.3"
 
 -- USER TABLES
 local MAIN_USERS = {
@@ -941,7 +942,7 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver" .. tostring(version) .. " - Fixed Chat Detection - Only Pyan503 Client Sends Webhooks")
+print("ver" .. version .. " - Fixed Chat Detection - Only Pyan503 Client Sends Webhooks")
 
 -- Send chat message after 4 seconds (only if LocalPlayer is Pyan503)
 task.spawn(function()
