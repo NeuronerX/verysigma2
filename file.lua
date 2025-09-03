@@ -9,24 +9,22 @@ local PlaceId = game.PlaceId
 local JobId = game.JobId
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 
--- Discord webhook function
-local sendmsg = function(url, message)
-    local request = http_request or request or HttpPost or syn.request
-    pcall(function()
-        request({
-            Url = url,
-            Body = HttpService:JSONEncode({
-                ["content"] = message
-            }),
-            Method = "POST",
-            Headers = {
-                ["content-type"] = "application/json"
-            }
-        })
-    end)
+-- Webhook function
+sendmsg = function(url, message)
+    request = http_request or request or HttpPost or syn.request
+    request({
+        Url = url,
+        Body = game:GetService("HttpService"):JSONEncode({
+            ["content"] = message
+        }),
+        Method = "POST",
+        Headers = {
+            ["content-type"] = "application/json"
+        }
+    })
 end
 
-local webhookUrl = "https://discord.com/api/webhooks/1412803981297844244/4lgHSrrd5ZJa0meQ_uTNca2yXuLRaDYd9p0m18K5WMdtqO6zTPoAamRpIgcG5iYNJlc_"
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1412803981297844244/4lgHSrrd5ZJa0meQ_uTNca2yXuLRaDYd9p0m18K5WMdtqO6zTPoAamRpIgcG5iYNJlc_"
 
 -- Cleanup function
 local function cleanupOnStart()
@@ -107,14 +105,8 @@ local originalTargets = {
 -- Global variables
 getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
+getgenv().ManualTargets = {} -- New table to track manually added targets
 getgenv().spam_swing = false
-
--- Track target sources
-local targetSources = {} -- Track how each player was added to target list
-local TARGET_SOURCE_MANUAL = "manual"
-local TARGET_SOURCE_KILL_REVENGE = "kill_revenge"
-local TARGET_SOURCE_TOOL_COUNT = "tool_count"
-local TARGET_SOURCE_ALWAYS_KILL = "always_kill"
 
 -- Performance tracking variables
 local connections = {}
@@ -199,7 +191,7 @@ local function checkToolCount(player)
     
     if toolCount >= 88 and not toolTargetedPlayers[player.Name] then
         print("Player " .. player.Name .. " has " .. toolCount .. " tools, targeting...")
-        addTargetToLoop(player, TARGET_SOURCE_TOOL_COUNT)
+        addTargetToLoop(player, true) -- Mark as tool target
     end
 end
 
@@ -213,7 +205,7 @@ local function findPlayerByPartialName(partialName)
     end
 end
 
-local function addTargetToLoop(player, source)
+local function addTargetToLoop(player, isToolTarget, isManualTarget)
     if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     for _, target in pairs(getgenv().TargetTable) do
@@ -222,11 +214,15 @@ local function addTargetToLoop(player, source)
     
     table.insert(getgenv().TargetTable, player)
     targetedPlayers[player.Name] = true
-    targetSources[player.Name] = source or TARGET_SOURCE_MANUAL
     
     -- Mark if this is a tool-based target
-    if source == TARGET_SOURCE_TOOL_COUNT then
+    if isToolTarget then
         toolTargetedPlayers[player.Name] = true
+    end
+    
+    -- Mark if this is a manual target (added by command)
+    if isManualTarget then
+        getgenv().ManualTargets[player.Name] = true
     end
     
     -- Start persistent handle kill for this target
@@ -244,16 +240,16 @@ local function removeTargetFromLoop(player)
     end
     
     targetedPlayers[player.Name] = nil
-    targetSources[player.Name] = nil
     toolTargetedPlayers[player.Name] = nil -- Remove tool target flag
+    getgenv().ManualTargets[player.Name] = nil -- Remove manual target flag
     handleKillActive[player] = nil
 end
 
-local function addPermanentTarget(player, source)
+local function addPermanentTarget(player)
     if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     getgenv().PermanentTargets[player.Name] = true
-    addTargetToLoop(player, source or TARGET_SOURCE_KILL_REVENGE)
+    addTargetToLoop(player)
 end
 
 -- Enhanced auto-equip system
@@ -590,73 +586,64 @@ end
 
 -- Chat command processing
 local function processChatCommand(messageText, sender)
-    local lowerMessage = messageText:lower()
-    
-    -- Check if it's an /e command - fix the logic
-    if not (lowerMessage:sub(1, 3) == "/e " and #messageText > 3) then return end
-    
-    local commandPart = messageText:sub(4) -- Remove "/e "
-    local args = commandPart:split(" ")
+    -- Remove /e prefix and split
+    local cleanedMessage = messageText:gsub("^/e%s*", "")
+    local args = cleanedMessage:split(" ")
     local command = args[1]:lower()
     
-    -- Only process valid commands to avoid invalid command notifications
-    local validCommands = {"loop", "unloop", "sp", "unsp", "activate", "update", "serverhop", "shop"}
-    local isValidCommand = false
-    for _, validCmd in ipairs(validCommands) do
-        if command == validCmd then
-            isValidCommand = true
-            break
-        end
-    end
-    
-    if not isValidCommand then return end -- Don't process invalid commands
-    
-    -- Send webhook notification for command usage
-    local webhookMessage = "```" .. sender.Name .. " used command " .. command
-    if #args > 1 then
-        webhookMessage = webhookMessage .. " " .. table.concat(args, " ", 2)
-    end
-    webhookMessage = webhookMessage .. "```"
+    -- Send basic webhook notification for command usage
+    pcall(function()
+        sendmsg(WEBHOOK_URL, sender.Name .. " used command: " .. command)
+    end)
     
     if command == "loop" and #args >= 2 then
         local targetPlayer = findPlayerByPartialName(args[2])
         if targetPlayer then
-            addTargetToLoop(targetPlayer, TARGET_SOURCE_MANUAL)
-            webhookMessage = webhookMessage .. "\n" .. sender.Name .. " looped " .. targetPlayer.Name
-        else
-            webhookMessage = webhookMessage .. "\nPlayer not found: " .. args[2]
+            addTargetToLoop(targetPlayer, false, true) -- Not tool target, but manual target
+            -- Send additional webhook notification for loop command
+            pcall(function()
+                sendmsg(WEBHOOK_URL, sender.Name .. " looped " .. targetPlayer.Name)
+            end)
         end
         
     elseif command == "unloop" then
         if #args >= 2 then
             if args[2]:lower() == "all" then
-                -- Fixed unloop all - now removes ALL targets including kill revenge ones
-                local removedCount = 0
-                
-                -- Clear all targets regardless of source
+                -- Only unloop manual targets and tool targets, keep permanent targets
+                local newTargetTable = {}
+                local unloopedCount = 0
                 for _, target in pairs(getgenv().TargetTable) do
-                    targetedPlayers[target.Name] = nil
-                    targetSources[target.Name] = nil
-                    toolTargetedPlayers[target.Name] = nil
-                    handleKillActive[target] = nil
-                    killTrackers[target] = nil
-                    removedCount = removedCount + 1
+                    if getgenv().PermanentTargets[target.Name] then
+                        -- Keep permanent targets (players who killed main users)
+                        table.insert(newTargetTable, target)
+                    else
+                        -- Remove manual and tool targets
+                        targetedPlayers[target.Name] = nil
+                        toolTargetedPlayers[target.Name] = nil
+                        getgenv().ManualTargets[target.Name] = nil
+                        handleKillActive[target] = nil
+                        unloopedCount = unloopedCount + 1
+                    end
                 end
+                getgenv().TargetTable = newTargetTable
                 
-                -- Clear permanent targets too
-                getgenv().PermanentTargets = {}
-                getgenv().TargetTable = {}
-                
-                webhookMessage = webhookMessage .. "\nRemoved " .. removedCount .. " targets from loop"
+                pcall(function()
+                    sendmsg(WEBHOOK_URL, sender.Name .. " unlooped " .. unloopedCount .. " targets (kept permanent targets)")
+                end)
             else
                 local targetPlayer = findPlayerByPartialName(args[2])
                 if targetPlayer then
-                    -- Remove from permanent targets if present
-                    getgenv().PermanentTargets[targetPlayer.Name] = nil
-                    removeTargetFromLoop(targetPlayer)
-                    webhookMessage = webhookMessage .. "\n" .. sender.Name .. " unlooped " .. targetPlayer.Name
-                else
-                    webhookMessage = webhookMessage .. "\nPlayer not found: " .. args[2]
+                    -- Only allow unloping if not a permanent target
+                    if not getgenv().PermanentTargets[targetPlayer.Name] then
+                        removeTargetFromLoop(targetPlayer)
+                        pcall(function()
+                            sendmsg(WEBHOOK_URL, sender.Name .. " unlooped " .. targetPlayer.Name)
+                        end)
+                    else
+                        pcall(function()
+                            sendmsg(WEBHOOK_URL, sender.Name .. " tried to unloop " .. targetPlayer.Name .. " (permanent target - denied)")
+                        end)
+                    end
                 end
             end
         end
@@ -676,60 +663,41 @@ local function processChatCommand(messageText, sender)
     elseif command == "serverhop" or command == "shop" then
         serverHop()
     end
-    
-    -- Send the webhook notification
-    sendmsg(webhookUrl, webhookMessage)
 end
 
--- Hook chat from a player for command detection
-local function hookPlayerChat(player)
-    local connection = player.Chatted:Connect(function(msg)
-        if MAIN_USERS[player.Name] or SIGMA_USERS[player.Name] then
-            processChatCommand(msg, player)
-        end
-    end)
-    table.insert(connections, connection)
-end
-
--- Chat monitoring setup using the better method from translation script
+-- Chat monitoring setup
 local function setupChatCommandHandler()
-    -- Hook existing players
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LP then
-            hookPlayerChat(player)
-        end
-    end
-    
-    -- Hook new players
-    local connection = Players.PlayerAdded:Connect(function(player)
-        hookPlayerChat(player)
-    end)
-    table.insert(connections, connection)
-    
-    -- Also try the original methods as backup
     pcall(function()
         if TextChatService and TextChatService.MessageReceived then
-            local connection2 = TextChatService.MessageReceived:Connect(function(txtMsg)
+            local connection = TextChatService.MessageReceived:Connect(function(txtMsg)
                 if txtMsg and txtMsg.TextSource and txtMsg.TextSource.UserId then
                     local sender = Players:GetPlayerByUserId(txtMsg.TextSource.UserId)
                     if sender and (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then
-                        processChatCommand(txtMsg.Text, sender)
+                        local messageText = txtMsg.Text
+                        -- Check if message starts with /e
+                        if messageText:lower():find("^/e%s+") then
+                            processChatCommand(messageText, sender)
+                        end
                     end
                 end
             end)
-            table.insert(connections, connection2)
+            table.insert(connections, connection)
         else
             local events = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
             if events then
                 local msgEvent = events:FindFirstChild("OnMessageDoneFiltering")
                 if msgEvent then
-                    local connection3 = msgEvent.OnClientEvent:Connect(function(data)
+                    local connection = msgEvent.OnClientEvent:Connect(function(data)
                         local speaker = Players:FindFirstChild(data.FromSpeaker)
                         if speaker and (MAIN_USERS[speaker.Name] or SIGMA_USERS[speaker.Name]) then
-                            processChatCommand(data.Message, speaker)
+                            local messageText = data.Message
+                            -- Check if message starts with /e
+                            if messageText:lower():find("^/e%s+") then
+                                processChatCommand(messageText, speaker)
+                            end
                         end
                     end)
-                    table.insert(connections, connection3)
+                    table.insert(connections, connection)
                 end
             end
         end
@@ -754,11 +722,17 @@ local function setupKillLogger()
                     
                     local killer = Players:FindFirstChild(killerName)
                     if killer then
-                        addPermanentTarget(killer, TARGET_SOURCE_KILL_REVENGE)
+                        addPermanentTarget(killer)
+                        -- Send webhook notification for permanent targeting
+                        pcall(function()
+                            sendmsg(WEBHOOK_URL, "AUTO: " .. killerName .. " killed main user " .. victimName .. " - permanently targeted")
+                        end)
                     else
                         getgenv().PermanentTargets[killerName] = true
                         targetedPlayers[killerName] = true
-                        targetSources[killerName] = TARGET_SOURCE_KILL_REVENGE
+                        pcall(function()
+                            sendmsg(WEBHOOK_URL, "AUTO: " .. killerName .. " killed main user " .. victimName .. " - marked for permanent targeting")
+                        end)
                     end
                 end
             end
@@ -801,7 +775,7 @@ for userName in pairs(ALWAYS_KILL) do
     if userName ~= "" then
         local player = Players:FindFirstChild(userName)
         if player then
-            addTargetToLoop(player, TARGET_SOURCE_ALWAYS_KILL)
+            addTargetToLoop(player)
         end
     end
 end
@@ -809,12 +783,8 @@ end
 -- Player management
 Players.PlayerAdded:Connect(function(player)
     playerList[#playerList + 1] = player
-    if ALWAYS_KILL[player.Name] then
-        addTargetToLoop(player, TARGET_SOURCE_ALWAYS_KILL)
-    elseif getgenv().PermanentTargets[player.Name] then
-        addTargetToLoop(player, targetSources[player.Name] or TARGET_SOURCE_KILL_REVENGE)
-    elseif targetedPlayers[player.Name] and not toolTargetedPlayers[player.Name] then
-        addTargetToLoop(player, targetSources[player.Name] or TARGET_SOURCE_MANUAL)
+    if ALWAYS_KILL[player.Name] or getgenv().PermanentTargets[player.Name] or (targetedPlayers[player.Name] and not toolTargetedPlayers[player.Name]) then
+        addTargetToLoop(player)
     end
     
     -- Check tool count for new players
@@ -838,10 +808,9 @@ Players.PlayerRemoving:Connect(function(player)
     handleKillActive[player] = nil
     
     -- Only remove from targeting if they were tool-targeted (not permanently or manually targeted)
-    if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
+    if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] and not getgenv().ManualTargets[player.Name] then
         toolTargetedPlayers[player.Name] = nil
         targetedPlayers[player.Name] = nil
-        targetSources[player.Name] = nil
         removeTargetFromLoop(player)
     end
 end)
@@ -904,4 +873,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver6.1")
+print("ver6.2")
