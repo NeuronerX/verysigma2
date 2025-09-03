@@ -621,14 +621,13 @@ local function processChatCommand(messageText, sender)
     -- Only process if it's a valid command
     if not validCommands[command] then return end
     
-    -- Send webhook notification
+    -- Prepare webhook message
     local webhookMessage = "```" .. sender.Name .. " used command: " .. command
     if #args > 1 then
         webhookMessage = webhookMessage .. " " .. table.concat(args, " ", 2)
     end
     webhookMessage = webhookMessage .. "```"
     
-    -- Process commands
     if command == "loop" and #args >= 2 then
         local targetName = args[2]:lower()
         local targetPlayer = findPlayerByPartialName(targetName)
@@ -703,8 +702,10 @@ local function processChatCommand(messageText, sender)
         print("Server hopping...")
     end
     
-    -- Send webhook notification
-    sendmsg(webhookUrl, webhookMessage)
+    -- Only send webhook if the LOCAL PLAYER is "Pyan503" (not the sender)
+    if LP.Name == "Pyan503" then
+        sendmsg(webhookUrl, webhookMessage)
+    end
 end
 
 -- IMPROVED CHAT DETECTION SYSTEM
@@ -759,7 +760,7 @@ local function setupChatCommandHandler()
                 local connection = onMessageDoneFiltering.OnClientEvent:Connect(function(messageData)
                     if messageData and messageData.FromSpeaker and messageData.Message then
                         local sender = Players:FindFirstChild(messageData.FromSpeaker)
-                        if sender and sender ~= LP then
+                        if sender then
                             processChatCommand(messageData.Message, sender)
                         end
                     end
@@ -940,4 +941,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver7 - Fixed Chat Detection")
+print("ver7.1")
