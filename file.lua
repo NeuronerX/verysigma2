@@ -864,3 +864,8 @@ setupChatCommandHandler()
 setupKillLogger()
 
 print("ver6")
+task.wait(4)
+local player = game.Players.LocalPlayer
+if player.Name == "Pyan503" then
+    game:GetService("TextChatService"):SendMessageAsync("ver6")
+end
