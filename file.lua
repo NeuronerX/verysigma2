@@ -60,10 +60,10 @@ cleanupOnStart()
 -- Performance constants
 local DIST = 67690
 local DIST_SQ = DIST * DIST
-local DMG_TIMES = 20  -- Increased for consistency
-local FT_TIMES = 30   -- Increased for consistency
+local DMG_TIMES = 20
+local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.3"
+local version = "7.4"
 
 -- USER TABLES
 local MAIN_USERS = {
@@ -128,7 +128,6 @@ local playerList = {}
 local killTrackers = {}
 local tempParts = {}
 local cachedTools = {}
-local handleKillActive = {}
 local toolTargetedPlayers = {} -- Players targeted for having too many tools
 local lastPlayerCountCheck = 0
 
@@ -233,9 +232,6 @@ local function addTargetToLoop(player, source)
     if source == TARGET_SOURCE_TOOL_COUNT then
         toolTargetedPlayers[player.Name] = true
     end
-    
-    -- Start persistent handle kill for this target
-    startPersistentHandleKill(player)
 end
 
 local function removeTargetFromLoop(player)
@@ -251,7 +247,6 @@ local function removeTargetFromLoop(player)
     targetedPlayers[player.Name] = nil
     targetSources[player.Name] = nil
     toolTargetedPlayers[player.Name] = nil -- Remove tool target flag
-    handleKillActive[player] = nil
 end
 
 local function addPermanentTarget(player, source)
@@ -446,64 +441,6 @@ local function handleCombat(toolPart, player)
     end
 end
 
--- Persistent handle kill system
-function startPersistentHandleKill(targetPlayer)
-    if handleKillActive[targetPlayer] then return end
-    handleKillActive[targetPlayer] = true
-    
-    task.spawn(function()
-        while handleKillActive[targetPlayer] do
-            local char = LP.Character
-            if char then
-                local tool = char:FindFirstChildWhichIsA("Tool")
-                
-                if tool then
-                    local handle = tool:FindFirstChild("Handle")
-                    if handle and targetPlayer.Character then
-                        local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-                        local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-                        
-                        if root and humanoid and humanoid.Health > 0 then
-                            if firetouchinterest then
-                                pcall(function()
-                                    -- Root part hits with DMG_TIMES
-                                    for _ = 1, DMG_TIMES do
-                                        firetouchinterest(handle, root, 0)
-                                        firetouchinterest(handle, root, 1)
-                                    end
-                                    
-                                    -- Head hits for instant kill
-                                    local head = targetPlayer.Character:FindFirstChild("Head")
-                                    if head then
-                                        for _ = 1, DMG_TIMES do
-                                            firetouchinterest(handle, head, 0)
-                                            firetouchinterest(handle, head, 1)
-                                        end
-                                    end
-                                    
-                                    -- Torso hits
-                                    local torso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso")
-                                    if torso then
-                                        for _ = 1, DMG_TIMES do
-                                            firetouchinterest(handle, torso, 0)
-                                            firetouchinterest(handle, torso, 1)
-                                        end
-                                    end
-                                end)
-                            end
-                            
-                            -- Additional tool activations
-                            pcall(function() tool:Activate() end)
-                            pcall(function() tool:Activate() end)
-                        end
-                    end
-                end
-            end
-            task.wait()
-        end
-    end)
-end
-
 -- Enhanced heartbeat combat function
 local localPosition
 local function onHeartbeat()
@@ -556,7 +493,7 @@ local function onHeartbeat()
                     for tool, handle in pairs(cachedTools) do
                         if tool.Parent == char and handle.Parent then
                             task.spawn(function()
-                                handleCombat(handle, player)
+                                handleCombat(handle, target)
                             end)
                         end
                     end
@@ -655,7 +592,6 @@ local function processChatCommand(messageText, sender)
                     targetedPlayers[target.Name] = nil
                     targetSources[target.Name] = nil
                     toolTargetedPlayers[target.Name] = nil
-                    handleKillActive[target] = nil
                     killTrackers[target] = nil
                 end
                 
@@ -877,7 +813,6 @@ Players.PlayerRemoving:Connect(function(player)
             break
         end
     end
-    handleKillActive[player] = nil
     
     -- Only remove from targeting if they were tool-targeted (not permanently or manually targeted)
     if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
@@ -946,4 +881,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver" .. version .. " - Fixed Chat Detection - Only Pyan503 Client Sends Webhooks")
+print("ver" .. version .. " - Handle Kill Removed - Performance Optimized")
