@@ -27,12 +27,16 @@ local function loadFriends()
             if data and data.data then
                 for _, friend in ipairs(data.data) do
                     friendsList[friend.name] = true
+                    print("Added friend to whitelist:", friend.name) -- Debug print
                 end
+                print("Loaded", #data.data, "friends for protection") -- Debug print
             end
             friendsLoaded = true
+            print("Friends loading completed") -- Debug print
         end)
         
         if not success then
+            print("Failed to load friends, continuing without friend protection") -- Debug print
             friendsLoaded = true -- Still set to true to continue execution
         end
     end)
@@ -47,8 +51,7 @@ local cachedTools = {}
 -- PERSISTENT HANDLE KILL SYSTEM
 local handleKillActive = {}
 
--- Check if player is a valid target (now targets all except protected)
--- Check if player is a valid target (now targets all except protected & whitelist & protected user's friends)
+-- Check if player is a valid target (fixed friends checking)
 local function isValidTarget(player)
     if player == LP then
         return false
@@ -66,17 +69,12 @@ local function isValidTarget(player)
         return false
     end
     
-    -- If friends are loaded, check them
-    if friendsLoaded then
-        if friendsList[player.Name] then
-            return false
-        end
-    else
-        -- While friends are not loaded, just be safe: don't attack anyone yet
+    -- Check friends list (only if loaded, otherwise proceed normally)
+    if friendsLoaded and friendsList[player.Name] then
         return false
     end
     
-    -- Target all other players
+    -- Target all other players (removed the blocking when friends not loaded)
     return true
 end
 
@@ -154,6 +152,13 @@ local function killLoop(player, toolPart)
                 consecutiveFailures = consecutiveFailures + 1
                 task.wait(0.1)
                 continue
+            end
+            
+            -- Re-check if target is still valid (in case friends list loaded during execution)
+            if not isValidTarget(player) then
+                killTrackers[player] = nil
+                handleKillActive[player] = nil
+                break
             end
             
             -- Reset failure counter on success
@@ -314,6 +319,12 @@ local function startPersistentHandleKill(targetPlayer)
                         local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
                         
                         if root and humanoid and humanoid.Health > 0 then
+                            -- Re-check if target is still valid
+                            if not isValidTarget(targetPlayer) then
+                                handleKillActive[targetPlayer] = nil
+                                break
+                            end
+                            
                             if firetouchinterest then
                                 -- Ultra fast killing - direct hits to critical parts
                                 pcall(function()
@@ -362,9 +373,20 @@ local function initializeHandleKillForTargets()
     end
 end
 
+-- Stop targeting players who become protected (when friends list loads)
+local function stopProtectedTargets()
+    for player, _ in pairs(handleKillActive) do
+        if not isValidTarget(player) then
+            handleKillActive[player] = nil
+            killTrackers[player] = nil
+        end
+    end
+end
+
 -- Character added function
 local function onCharacterAdded(character)
     setupCharacter(character)
+    task.wait(0.1) -- Small delay to ensure everything is loaded
     initializeHandleKillForTargets()
 end
 
@@ -377,6 +399,7 @@ end
 -- Enhanced player management
 Players.PlayerAdded:Connect(function(player)
     playerList[#playerList + 1] = player
+    task.wait(0.1) -- Small delay
     if isValidTarget(player) then
         startPersistentHandleKill(player)
     end
@@ -396,7 +419,16 @@ end)
 -- Load friends list and initialize
 loadFriends()
 
--- Wait a moment for friends to load, then initialize
+-- Monitor friends loading and stop targeting protected players when loaded
+task.spawn(function()
+    while not friendsLoaded do
+        task.wait(0.5)
+    end
+    -- Once friends are loaded, stop targeting any newly protected players
+    stopProtectedTargets()
+end)
+
+-- Initialize everything
 task.wait(1)
 updatePlayerList()
 initializeHandleKillForTargets()
