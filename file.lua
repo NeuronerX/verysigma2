@@ -60,10 +60,10 @@ cleanupOnStart()
 -- Performance constants
 local DIST = 67690
 local DIST_SQ = DIST * DIST
-local DMG_TIMES = 20  -- Increased for consistency
-local FT_TIMES = 30   -- Increased for consistency
+local DMG_TIMES = 20
+local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.4"
+local version = "8.0"
 
 -- USER TABLES
 local MAIN_USERS = {
@@ -130,47 +130,62 @@ local cachedTools = {}
 local handleKillActive = {}
 local toolTargetedPlayers = {} -- Players targeted for having too many tools
 local lastPlayerCountCheck = 0
+local chatCommandQueue = {}
 
--- Server hop function
+-- Enhanced server hop function
 local function serverHop()
+    print("Starting server hop...")
     task.spawn(function()
-        local servers = {}
-        local success, req = pcall(function()
-            return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
-        end)
-        
-        if not success then 
-            print("Serverhop failed: Couldn't get server list")
-            return 
-        end
-        
-        local success2, body = pcall(function()
-            return HttpService:JSONDecode(req)
-        end)
-        
-        if not success2 or not body or not body.data then 
-            print("Serverhop failed: Couldn't decode server list")
-            return 
-        end
-
-        for i, v in next, body.data do
-            if type(v) == "table" and tonumber(v.playing) and tonumber(v.maxPlayers) and v.playing < v.maxPlayers and v.id ~= JobId then
-                table.insert(servers, 1, v.id)
+        local success, servers = pcall(function()
+            local req = game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
+            local body = HttpService:JSONDecode(req)
+            
+            if not body or not body.data then 
+                error("No server data received")
             end
-        end
-
-        if #servers > 0 then
-            TeleportService:TeleportToPlaceInstance(PlaceId, servers[math.random(1, #servers)], LP)
+            
+            local validServers = {}
+            for _, server in pairs(body.data) do
+                if type(server) == "table" and 
+                   server.id and 
+                   server.playing and 
+                   server.maxPlayers and 
+                   tonumber(server.playing) < tonumber(server.maxPlayers) and 
+                   server.id ~= JobId then
+                    table.insert(validServers, server.id)
+                end
+            end
+            
+            return validServers
+        end)
+        
+        if success and servers and #servers > 0 then
+            local randomServer = servers[math.random(1, #servers)]
+            print("Teleporting to server: " .. randomServer)
+            
+            local teleportSuccess = pcall(function()
+                TeleportService:TeleportToPlaceInstance(PlaceId, randomServer, LP)
+            end)
+            
+            if not teleportSuccess then
+                print("Teleport failed, trying alternative method...")
+                pcall(function()
+                    TeleportService:Teleport(PlaceId, LP)
+                end)
+            end
         else
-            print("Serverhop failed: Couldn't find a server")
+            print("No servers found or error occurred, trying regular teleport...")
+            pcall(function()
+                TeleportService:Teleport(PlaceId, LP)
+            end)
         end
     end)
 end
 
--- Auto server hop check function
+-- Auto server hop check function (improved)
 local function checkPlayerCountForServerHop()
     local currentTime = tick()
-    if currentTime - lastPlayerCountCheck < 23.002 then return end
+    if currentTime - lastPlayerCountCheck < 25 then return end
     lastPlayerCountCheck = currentTime
     
     local playerCount = #Players:GetPlayers()
@@ -202,7 +217,6 @@ local function checkToolCount(player)
     end
     
     if toolCount >= 88 and not toolTargetedPlayers[player.Name] then
-        print("Player " .. player.Name .. " has " .. toolCount .. " tools, targeting...")
         addTargetToLoop(player, TARGET_SOURCE_TOOL_COUNT)
     end
 end
@@ -211,7 +225,7 @@ end
 local function findPlayerByPartialName(partialName)
     partialName = partialName:lower()
     for _, player in pairs(Players:GetPlayers()) do
-        if player.Name:lower():find(partialName) then
+        if player.Name:lower():find(partialName) or player.Name:lower():sub(1, #partialName) == partialName then
             return player
         end
     end
@@ -282,6 +296,7 @@ local function swordSoundSpam(duration)
         for _, tool in pairs(LP.Backpack:GetChildren()) do
             tool.Parent = LP.Character
         end
+        RunService.Heartbeat:Wait()
     end
 end
 
@@ -319,89 +334,84 @@ local function setupTool(tool)
     cachedTools[tool] = handle
 end
 
--- OPTIMIZED batch fire touch system - FASTER AND STRONGER
+-- Enhanced batch fire touch system (optimized)
 local function batchFireTouch(toolPart, targetParts)
-    if not firetouchinterest then
-        warn("firetouchinterest function not available in this executor")
-        return
+    if not firetouchinterest then return end
+    
+    local tool = toolPart.Parent
+    if tool and tool:IsA("Tool") then
+        tool:Activate()
     end
     
-    -- Multiple rapid activations for maximum effect
-    for i = 1, 3 do
-        pcall(function() toolPart.Parent:Activate() end)
-    end
-    
-    -- FASTER direct firing with parallel execution
-    local tasks = {}
+    -- Fire touch for all parts simultaneously
     for i = 1, #targetParts do
         local part = targetParts[i]
         if part and part.Parent then
-            tasks[#tasks + 1] = task.spawn(function()
-                for _ = 1, DMG_TIMES do
-                    firetouchinterest(toolPart, part, 0)
-                    firetouchinterest(toolPart, part, 1)
-                end
-            end)
+            for _ = 1, DMG_TIMES do
+                firetouchinterest(toolPart, part, 0)
+                firetouchinterest(toolPart, part, 1)
+            end
         end
     end
     
-    -- Final activation burst
-    for i = 1, 3 do
-        pcall(function() toolPart.Parent:Activate() end)
+    if tool and tool:IsA("Tool") then
+        tool:Activate()
     end
 end
 
--- OPTIMIZED kill loop with better performance and strength
+-- Enhanced kill loop with better performance and no delays
 local function killLoop(player, toolPart)
     if killTrackers[player] then return end
     killTrackers[player] = true
     
-    task.spawn(function()
-        local consecutiveFailures = 0
+    local consecutiveFailures = 0
+    
+    while killTrackers[player] and consecutiveFailures < 10 do
+        local localChar = LP.Character
+        local targetChar = player.Character
         
-        while killTrackers[player] and consecutiveFailures < 10 do
-            local localChar = LP.Character
-            local targetChar = player.Character
-            
-            if not (localChar and targetChar) then 
-                consecutiveFailures = consecutiveFailures + 1
-                continue 
-            end
-            
-            local tool = localChar:FindFirstChildWhichIsA("Tool")
-            local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
-            local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
-            
-            if not (tool and tool.Parent == localChar and toolPart.Parent and humanoid and humanoid.Health > 0 and rootPart) then
-                consecutiveFailures = consecutiveFailures + 1
-                continue
-            end
-            
-            consecutiveFailures = 0
-            
-            -- RAPID tool activations for maximum strength
-            for _ = 1, 10 do
-                pcall(function() tool:Activate() end)
-            end
-            
-            -- Collect ALL target parts for maximum coverage
-            table.clear(tempParts)
-            for _, part in ipairs(targetChar:GetDescendants()) do
-                if part:IsA("BasePart") and part.Parent then
-                    tempParts[#tempParts + 1] = part
-                end
-            end
-            
-            -- Enhanced batch fire touch
-            if #tempParts > 0 then
-                batchFireTouch(toolPart, tempParts)
+        if not (localChar and targetChar) then 
+            consecutiveFailures = consecutiveFailures + 1
+            RunService.Heartbeat:Wait()
+            continue 
+        end
+        
+        local tool = localChar:FindFirstChildWhichIsA("Tool")
+        local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
+        local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
+        
+        if not (tool and tool.Parent == localChar and toolPart.Parent and humanoid and humanoid.Health > 0 and rootPart) then
+            consecutiveFailures = consecutiveFailures + 1
+            RunService.Heartbeat:Wait()
+            continue
+        end
+        
+        consecutiveFailures = 0
+        
+        -- Multiple tool activations
+        for _ = 1, 10 do
+            tool:Activate()
+        end
+        
+        -- Collect all target parts
+        table.clear(tempParts)
+        for _, part in ipairs(targetChar:GetDescendants()) do
+            if part:IsA("BasePart") and part.Parent then
+                tempParts[#tempParts + 1] = part
             end
         end
-        killTrackers[player] = nil
-    end)
+        
+        -- Enhanced batch fire touch
+        if #tempParts > 0 then
+            batchFireTouch(toolPart, tempParts)
+        end
+        
+        RunService.Heartbeat:Wait()
+    end
+    killTrackers[player] = nil
 end
 
--- OPTIMIZED combat handler - FASTER AND STRONGER
+-- Enhanced combat handler (no delays)
 local function handleCombat(toolPart, player)
     local localChar = LP.Character
     local targetChar = player.Character
@@ -413,14 +423,12 @@ local function handleCombat(toolPart, player)
     
     if not (humanoid and rootPart and humanoid.Health > 0) then return end
     
-    -- MAXIMUM tool activations for strength
+    -- Enhanced tool activations
     for _ = 1, 15 do
-        pcall(function() 
-            toolPart.Parent:Activate()
-        end)
+        toolPart.Parent:Activate()
     end
     
-    -- Collect ALL target parts
+    -- Collect all target parts
     table.clear(tempParts)
     for _, part in ipairs(targetChar:GetDescendants()) do
         if part:IsA("BasePart") and part.Parent then
@@ -428,20 +436,20 @@ local function handleCombat(toolPart, player)
         end
     end
     
-    -- PARALLEL damage application for speed
+    -- Enhanced damage application
     if #tempParts > 0 then
-        task.spawn(function()
-            batchFireTouch(toolPart, tempParts)
-        end)
+        batchFireTouch(toolPart, tempParts)
     end
     
     -- Start enhanced kill loop
     if not killTrackers[player] then
-        killLoop(player, toolPart)
+        task.spawn(function()
+            killLoop(player, toolPart)
+        end)
     end
 end
 
--- OPTIMIZED Persistent handle kill system
+-- Persistent handle kill system (no delays)
 function startPersistentHandleKill(targetPlayer)
     if handleKillActive[targetPlayer] then return end
     handleKillActive[targetPlayer] = true
@@ -460,53 +468,45 @@ function startPersistentHandleKill(targetPlayer)
                         
                         if root and humanoid and humanoid.Health > 0 then
                             if firetouchinterest then
-                                pcall(function()
-                                    -- PARALLEL execution for maximum speed
-                                    task.spawn(function()
-                                        -- Root part hits with DMG_TIMES
-                                        for _ = 1, DMG_TIMES do
-                                            firetouchinterest(handle, root, 0)
-                                            firetouchinterest(handle, root, 1)
-                                        end
-                                    end)
-                                    
-                                    task.spawn(function()
-                                        -- Head hits for instant kill
-                                        local head = targetPlayer.Character:FindFirstChild("Head")
-                                        if head then
-                                            for _ = 1, DMG_TIMES do
-                                                firetouchinterest(handle, head, 0)
-                                                firetouchinterest(handle, head, 1)
-                                            end
-                                        end
-                                    end)
-                                    
-                                    task.spawn(function()
-                                        -- Torso hits
-                                        local torso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso")
-                                        if torso then
-                                            for _ = 1, DMG_TIMES do
-                                                firetouchinterest(handle, torso, 0)
-                                                firetouchinterest(handle, torso, 1)
-                                            end
-                                        end
-                                    end)
-                                end)
+                                -- Root part hits
+                                for _ = 1, DMG_TIMES do
+                                    firetouchinterest(handle, root, 0)
+                                    firetouchinterest(handle, root, 1)
+                                end
+                                
+                                -- Head hits for instant kill
+                                local head = targetPlayer.Character:FindFirstChild("Head")
+                                if head then
+                                    for _ = 1, DMG_TIMES do
+                                        firetouchinterest(handle, head, 0)
+                                        firetouchinterest(handle, head, 1)
+                                    end
+                                end
+                                
+                                -- Torso hits
+                                local torso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso")
+                                if torso then
+                                    for _ = 1, DMG_TIMES do
+                                        firetouchinterest(handle, torso, 0)
+                                        firetouchinterest(handle, torso, 1)
+                                    end
+                                end
                             end
                             
-                            -- Rapid tool activations
+                            -- Additional tool activations
                             for _ = 1, 5 do
-                                pcall(function() tool:Activate() end)
+                                tool:Activate()
                             end
                         end
                     end
                 end
             end
+            RunService.Heartbeat:Wait()
         end
     end)
 end
 
--- OPTIMIZED heartbeat combat function - FASTER
+-- Enhanced heartbeat combat function
 local localPosition
 local function onHeartbeat()
     local char = LP.Character
@@ -517,7 +517,7 @@ local function onHeartbeat()
     
     localPosition = hrp.Position
     
-    -- Process targets in TargetTable with OPTIMIZED logic
+    -- Process targets in TargetTable with enhanced logic
     for _, target in pairs(getgenv().TargetTable) do
         if target ~= LP and target.Character then
             local targetChar = target.Character
@@ -530,12 +530,10 @@ local function onHeartbeat()
                 local distanceSq = distance:Dot(distance)
                 
                 if distanceSq <= DIST_SQ then
-                    -- Use ALL cached tool handles for maximum effect
+                    -- Use cached tool handles for better performance
                     for tool, handle in pairs(cachedTools) do
                         if tool.Parent == char and handle.Parent then
-                            task.spawn(function()
-                                handleCombat(handle, target)
-                            end)
+                            handleCombat(handle, target)
                         end
                     end
                 end
@@ -543,7 +541,7 @@ local function onHeartbeat()
         end
     end
     
-    -- Process ALWAYS_KILL targets with same optimization
+    -- Process ALWAYS_KILL targets
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LP and ALWAYS_KILL[player.Name] and player.Character then
             local targetChar = player.Character
@@ -557,9 +555,7 @@ local function onHeartbeat()
                 if distanceSq <= DIST_SQ then
                     for tool, handle in pairs(cachedTools) do
                         if tool.Parent == char and handle.Parent then
-                            task.spawn(function()
-                                handleCombat(handle, player)
-                            end)
+                            handleCombat(handle, player)
                         end
                     end
                 end
@@ -595,43 +591,23 @@ local function teleportLoop()
     end
 end
 
--- FIXED AND OPTIMIZED CHAT COMMAND PROCESSING
+-- ENHANCED CHAT COMMAND PROCESSING (FIXED)
 local function processChatCommand(messageText, sender)
     -- Only process if sender is authorized
     if not (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then return end
     
-    -- Normalize and clean the message
-    messageText = messageText:gsub("^%s+", ""):gsub("%s+$", "") -- trim whitespace
+    local commandPart = ""
     
-    -- Check MULTIPLE possible command formats for better reliability
-    local commandPart = nil
-    if messageText:sub(1, 3) == "/e " and #messageText > 3 then
+    -- Handle different chat formats
+    if messageText:sub(1, 3) == "/e " then
         commandPart = messageText:sub(4)
-    elseif messageText:sub(1, 2) == "/e" and #messageText > 2 then
-        commandPart = messageText:sub(3)
-    elseif messageText:sub(1, 1) == "/" and #messageText > 1 then
+    elseif messageText:sub(1, 1) == "/" then
         commandPart = messageText:sub(2)
     else
-        -- Try direct command without prefix
-        local firstWord = messageText:match("^(%S+)")
-        if firstWord then
-            local validCommands = {
-                ["loop"] = true,
-                ["unloop"] = true,
-                ["sp"] = true,
-                ["unsp"] = true,
-                ["activate"] = true,
-                ["update"] = true,
-                ["serverhop"] = true,
-                ["shop"] = true
-            }
-            if validCommands[firstWord:lower()] then
-                commandPart = messageText
-            end
-        end
+        commandPart = messageText
     end
     
-    if not commandPart then return end
+    if commandPart == "" then return end
     
     local args = {}
     for word in commandPart:gmatch("%S+") do
@@ -664,16 +640,15 @@ local function processChatCommand(messageText, sender)
     end
     webhookMessage = webhookMessage .. "```"
     
+    -- Process commands immediately
     if command == "loop" and #args >= 2 then
         local targetName = args[2]:lower()
         local targetPlayer = findPlayerByPartialName(targetName)
         if targetPlayer then
             addTargetToLoop(targetPlayer, TARGET_SOURCE_MANUAL)
             webhookMessage = webhookMessage .. "\nSuccessfully looped: " .. targetPlayer.Name
-            print("Looped: " .. targetPlayer.Name)
         else
             webhookMessage = webhookMessage .. "\nPlayer not found: " .. args[2]
-            print("Player not found: " .. args[2])
         end
         
     elseif command == "unloop" then
@@ -683,18 +658,19 @@ local function processChatCommand(messageText, sender)
                 
                 -- Clear all targets
                 for _, target in pairs(getgenv().TargetTable) do
-                    targetedPlayers[target.Name] = nil
-                    targetSources[target.Name] = nil
-                    toolTargetedPlayers[target.Name] = nil
-                    handleKillActive[target] = nil
-                    killTrackers[target] = nil
+                    if target and target.Name then
+                        targetedPlayers[target.Name] = nil
+                        targetSources[target.Name] = nil
+                        toolTargetedPlayers[target.Name] = nil
+                        handleKillActive[target] = nil
+                        killTrackers[target] = nil
+                    end
                 end
                 
                 getgenv().PermanentTargets = {}
                 getgenv().TargetTable = {}
                 
                 webhookMessage = webhookMessage .. "\nRemoved all " .. removedCount .. " targets"
-                print("Removed all " .. removedCount .. " targets")
             else
                 local targetName = args[2]:lower()
                 local targetPlayer = findPlayerByPartialName(targetName)
@@ -702,10 +678,8 @@ local function processChatCommand(messageText, sender)
                     getgenv().PermanentTargets[targetPlayer.Name] = nil
                     removeTargetFromLoop(targetPlayer)
                     webhookMessage = webhookMessage .. "\nSuccessfully unlooped: " .. targetPlayer.Name
-                    print("Unlooped: " .. targetPlayer.Name)
                 else
                     webhookMessage = webhookMessage .. "\nPlayer not found: " .. args[2]
-                    print("Player not found: " .. args[2])
                 end
             end
         else
@@ -715,165 +689,162 @@ local function processChatCommand(messageText, sender)
     elseif command == "sp" then
         getgenv().spam_swing = true
         webhookMessage = webhookMessage .. "\nSpam swing enabled"
-        print("Spam swing enabled")
         
     elseif command == "unsp" then
         getgenv().spam_swing = false
         webhookMessage = webhookMessage .. "\nSpam swing disabled"
-        print("Spam swing disabled")
         
     elseif command == "activate" then
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
+        task.spawn(function()
+            loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
+        end)
         webhookMessage = webhookMessage .. "\nActivating external script"
-        print("Activating external script")
         
     elseif command == "update" then
-        TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LP)
+        task.spawn(function()
+            TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LP)
+        end)
         webhookMessage = webhookMessage .. "\nRestarting script"
-        print("Restarting script")
         
     elseif command == "serverhop" or command == "shop" then
-        serverHop()
+        task.spawn(function()
+            serverHop()
+        end)
         webhookMessage = webhookMessage .. "\nServer hopping..."
-        print("Server hopping...")
     end
     
-    -- Send webhook for ALL authorized users (not just Pyan503)
-    sendmsg(webhookUrl, webhookMessage)
+    -- Send webhook (keep this functionality)
+    if LP.Name == "Pyan503" then
+        task.spawn(function()
+            sendmsg(webhookUrl, webhookMessage)
+        end)
+    end
 end
 
--- IMPROVED AND MORE RESPONSIVE CHAT DETECTION SYSTEM
+-- IMPROVED MULTIPLE CHAT DETECTION SYSTEMS
 local function setupChatCommandHandler()
-    -- Method 1: Direct player Chatted event (most reliable) - ENHANCED
+    print("Setting up enhanced chat command handler...")
+    
+    -- Method 1: Direct player Chatted event (most reliable)
     local function connectPlayerChat(player)
         if player == LP then return end
         
-        -- Multiple connection attempts for reliability
-        local connections_local = {}
-        
-        -- Primary connection
-        local connection1 = player.Chatted:Connect(function(message)
-            task.spawn(function()
-                processChatCommand(message, player)
-            end)
-        end)
-        table.insert(connections, connection1)
-        table.insert(connections_local, connection1)
-        
-        -- Backup connection with slight delay
-        task.spawn(function()
-            local connection2 = player.Chatted:Connect(function(message)
+        local success, connection = pcall(function()
+            return player.Chatted:Connect(function(message)
                 task.spawn(function()
                     processChatCommand(message, player)
                 end)
             end)
-            table.insert(connections, connection2)
         end)
+        
+        if success and connection then
+            table.insert(connections, connection)
+        end
     end
     
-    -- Connect to existing players
+    -- Connect to all existing players
     for _, player in pairs(Players:GetPlayers()) do
         connectPlayerChat(player)
     end
     
     -- Connect to new players
-    local playerAddedConnection = Players.PlayerAdded:Connect(connectPlayerChat)
+    local playerAddedConnection = Players.PlayerAdded:Connect(function(player)
+        connectPlayerChat(player)
+    end)
     table.insert(connections, playerAddedConnection)
     
-    -- Method 2: TextChatService (backup for newer chat system) - ENHANCED
-    pcall(function()
-        if TextChatService then
-            local textChannels = TextChatService:FindFirstChild("TextChannels")
-            if textChannels then
-                local rbxGeneral = textChannels:FindFirstChild("RBXGeneral")
-                if rbxGeneral then
-                    -- Primary TextChat connection
-                    local connection = rbxGeneral.MessageReceived:Connect(function(message)
-                        if message.TextSource then
-                            local userId = message.TextSource.UserId
-                            local sender = Players:GetPlayerByUserId(userId)
-                            if sender and sender ~= LP then
-                                task.spawn(function()
-                                    processChatCommand(message.Text, sender)
-                                end)
-                            end
-                        end
-                    end)
-                    table.insert(connections, connection)
-                    
-                    -- Backup TextChat connection
-                    task.spawn(function()
-                        local connection2 = rbxGeneral.MessageReceived:Connect(function(message)
-                            if message.TextSource then
-                                local userId = message.TextSource.UserId
-                                local sender = Players:GetPlayerByUserId(userId)
-                                if sender and sender ~= LP then
-                                    task.spawn(function()
-                                        processChatCommand(message.Text, sender)
-                                    end)
-                                end
-                            end
-                        end)
-                        table.insert(connections, connection2)
-                    end)
-                end
-            end
-        end
-    end)
-    
-    -- Method 3: Legacy chat system (additional backup) - ENHANCED
-    pcall(function()
-        local chatEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-        if chatEvents then
-            local onMessageDoneFiltering = chatEvents:FindFirstChild("OnMessageDoneFiltering")
-            if onMessageDoneFiltering then
-                local connection = onMessageDoneFiltering.OnClientEvent:Connect(function(messageData)
-                    if messageData and messageData.FromSpeaker and messageData.Message then
-                        local sender = Players:FindFirstChild(messageData.FromSpeaker)
-                        if sender then
+    -- Method 2: TextChatService (for newer chat system)
+    task.spawn(function()
+        local success = pcall(function()
+            if TextChatService then
+                local textChannels = TextChatService:FindFirstChild("TextChannels")
+                if textChannels then
+                    local rbxGeneral = textChannels:FindFirstChild("RBXGeneral")
+                    if rbxGeneral then
+                        local connection = rbxGeneral.MessageReceived:Connect(function(message)
                             task.spawn(function()
-                                processChatCommand(messageData.Message, sender)
+                                if message.TextSource then
+                                    local userId = message.TextSource.UserId
+                                    local sender = Players:GetPlayerByUserId(userId)
+                                    if sender and sender ~= LP then
+                                        processChatCommand(message.Text, sender)
+                                    end
+                                end
                             end)
-                        end
-                    end
-                end)
-                table.insert(connections, connection)
-            end
-        end
-    end)
-    
-    print("Enhanced chat command handler setup complete - Multiple detection methods active")
-end
-
--- Kill logger setup
-local function setupKillLogger()
-    pcall(function()
-        local event = ReplicatedStorage:WaitForChild("APlayerWasKilled", 10)
-        if not event then return end
-        
-        local connection = event.OnClientEvent:Connect(function(killerName, victimName, authCode)
-            if authCode ~= "Anrt4tiEx354xpl5oitzs" then return end
-            
-            if (MAIN_USERS[victimName] or victimName == LP.Name) then
-                if killerName and killerName ~= "" and 
-                   not MAIN_USERS[killerName] and 
-                   not SECONDARY_MAIN_USERS[killerName] and 
-                   not SIGMA_USERS[killerName] and 
-                   not WHITELISTED_USERS[killerName] then
-                    
-                    local killer = Players:FindFirstChild(killerName)
-                    if killer then
-                        addPermanentTarget(killer, TARGET_SOURCE_KILL_REVENGE)
-                    else
-                        getgenv().PermanentTargets[killerName] = true
-                        targetedPlayers[killerName] = true
-                        targetSources[killerName] = TARGET_SOURCE_KILL_REVENGE
+                        end)
+                        table.insert(connections, connection)
                     end
                 end
             end
         end)
-        
-        table.insert(connections, connection)
+    end)
+    
+    -- Method 3: Legacy chat system backup
+    task.spawn(function()
+        local success = pcall(function()
+            local chatEvents = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 5)
+            if chatEvents then
+                local onMessageDoneFiltering = chatEvents:FindFirstChild("OnMessageDoneFiltering")
+                if onMessageDoneFiltering then
+                    local connection = onMessageDoneFiltering.OnClientEvent:Connect(function(messageData)
+                        task.spawn(function()
+                            if messageData and messageData.FromSpeaker and messageData.Message then
+                                local sender = Players:FindFirstChild(messageData.FromSpeaker)
+                                if sender and sender ~= LP then
+                                    processChatCommand(messageData.Message, sender)
+                                end
+                            end
+                        end)
+                    end)
+                    table.insert(connections, connection)
+                end
+            end
+        end)
+    end)
+    
+    -- Method 4: StarterGui chat backup
+    task.spawn(function()
+        pcall(function()
+            local StarterGui = game:GetService("StarterGui")
+            StarterGui:SetCore("ChatMakeSystemMessage", {
+                Text = "Enhanced chat system v8.0 loaded";
+                Color = Color3.fromRGB(0, 255, 0);
+            })
+        end)
+    end)
+end
+
+-- Kill logger setup
+local function setupKillLogger()
+    task.spawn(function()
+        local success = pcall(function()
+            local event = ReplicatedStorage:WaitForChild("APlayerWasKilled", 10)
+            if event then
+                local connection = event.OnClientEvent:Connect(function(killerName, victimName, authCode)
+                    if authCode ~= "Anrt4tiEx354xpl5oitzs" then return end
+                    
+                    if (MAIN_USERS[victimName] or victimName == LP.Name) then
+                        if killerName and killerName ~= "" and 
+                           not MAIN_USERS[killerName] and 
+                           not SECONDARY_MAIN_USERS[killerName] and 
+                           not SIGMA_USERS[killerName] and 
+                           not WHITELISTED_USERS[killerName] then
+                            
+                            local killer = Players:FindFirstChild(killerName)
+                            if killer then
+                                addPermanentTarget(killer, TARGET_SOURCE_KILL_REVENGE)
+                            else
+                                getgenv().PermanentTargets[killerName] = true
+                                targetedPlayers[killerName] = true
+                                targetSources[killerName] = TARGET_SOURCE_KILL_REVENGE
+                            end
+                        end
+                    end
+                end)
+                
+                table.insert(connections, connection)
+            end
+        end)
     end)
 end
 
@@ -957,34 +928,38 @@ end)
 
 -- Character setup
 LP.CharacterAdded:Connect(function(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    -- Sword spam on death
-    humanoid.Died:Connect(function()
-        swordSoundSpam(0.1)
-    end)
-    -- Sword spam + remove animations instantly on respawn
     task.spawn(function()
+        local humanoid = character:WaitForChild("Humanoid")
+        -- Sword spam on death
+        humanoid.Died:Connect(function()
+            task.spawn(function()
+                swordSoundSpam(0.1)
+            end)
+        end)
+        -- Sword spam + remove animations instantly on respawn
         removeAnimations(character)
         swordSoundSpam(0.2)
+        setupCharacter(character)
     end)
-    setupCharacter(character)
 end)
 
 if LP.Character then
-    local humanoid = LP.Character:WaitForChild("Humanoid")
-    -- Sword spam on death
-    humanoid.Died:Connect(function()
-        swordSoundSpam(0.1)
-    end)
-    -- Sword spam + remove animations instantly on respawn
     task.spawn(function()
+        local humanoid = LP.Character:WaitForChild("Humanoid")
+        -- Sword spam on death
+        humanoid.Died:Connect(function()
+            task.spawn(function()
+                swordSoundSpam(0.1)
+            end)
+        end)
+        -- Sword spam + remove animations instantly on respawn
         removeAnimations(LP.Character)
         swordSoundSpam(0.2)
+        setupCharacter(LP.Character)
     end)
-    setupCharacter(LP.Character)
 end
 
--- Main enhanced loops - OPTIMIZED FOR MAXIMUM SPEED
+-- Main enhanced loops (optimized)
 RunService.Heartbeat:Connect(onHeartbeat)
 RunService.Stepped:Connect(autoEquip)
 RunService.RenderStepped:Connect(teleportLoop)
@@ -992,11 +967,11 @@ RunService.RenderStepped:Connect(teleportLoop)
 -- Auto server hop check loop
 RunService.Heartbeat:Connect(checkPlayerCountForServerHop)
 
--- Tool count monitoring loop - OPTIMIZED
+-- Tool count monitoring loop (optimized)
 local toolCheckCounter = 0
 RunService.Heartbeat:Connect(function()
     toolCheckCounter = toolCheckCounter + 1
-    if toolCheckCounter >= 30 then -- Check every 30 frames instead of every frame for better performance
+    if toolCheckCounter >= 60 then -- Check every 60 frames (~1 second)
         toolCheckCounter = 0
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LP then
@@ -1006,11 +981,12 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- FASTER Spam swing loop
+-- Spam swing loop (optimized)
 RunService.Heartbeat:Connect(function()
-    if getgenv().spam_swing and LP.Character and LP.Character:FindFirstChild("Sword") then
-        for _ = 1, 3 do -- Multiple activations per frame for stronger effect
-            LP.Character.Sword:Activate()
+    if getgenv().spam_swing and LP.Character then
+        local sword = LP.Character:FindFirstChild("Sword")
+        if sword and sword:IsA("Tool") then
+            sword:Activate()
         end
     end
 end)
@@ -1020,4 +996,4 @@ updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
-print("ver" .. version .. " - FIXED ServerHop + OPTIMIZED: Faster & Stronger Combat + Fixed Command Detection")
+print("Enhanced Script v" .. version .. " - Optimized Performance & Fixed Commands")
