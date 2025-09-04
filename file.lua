@@ -86,6 +86,7 @@ local SECONDARY_MAIN_USERS = {
 local ALWAYS_KILL = {
     ["sigmaboy123"] = true,
     ["josko730"] = true,
+    ["GoatReflex"] = true,
 }
 
 local WHITELISTED_USERS = {
