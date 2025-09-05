@@ -67,7 +67,7 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.6"
+local version = "7.61"
 
 -- DAMAGE TRACKING SETTINGS
 local damage_taking = true -- Enable/disable damage tracking for main users
@@ -318,7 +318,7 @@ local function findPlayerByPartialName(partialName)
     end
 end
 
-local function addTargetToLoop(player, source)
+addTargetToLoop = function(player, source)
     if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     for _, target in pairs(getgenv().TargetTable) do
