@@ -988,9 +988,6 @@ local function cleanup()
     table.clear(chatConnections)
 end
 
--- Disconnect on leaving
-game:BindToClose(cleanup)
-
 -- Initialize systems
 updatePlayerList()
 setupChatCommandHandler()
