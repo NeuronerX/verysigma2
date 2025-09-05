@@ -67,11 +67,11 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.63"
+local version = "7.64"
 
 -- DAMAGE TRACKING SETTINGS
 local damage_taking = true -- Enable/disable damage tracking for main users
-local local_damage = 20 -- Damage threshold before auto-loop
+local local_damage = 1 -- Damage threshold before auto-loop
 
 -- USER TABLES
 local MAIN_USERS = {
