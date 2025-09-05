@@ -12,10 +12,9 @@ task.wait(1)
 
 loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/command.lua'))()
 
--- Unique instance identifier to prevent conflicts
+-- Unique instance identifier to prevent chat conflicts
 local INSTANCE_ID = HttpService:GenerateGUID(false):sub(1, 8)
 local COMMAND_COOLDOWN = {}
-local LAST_COMMAND_TIME = 0
 
 -- Discord webhook function
 local sendmsg = function(url, message)
@@ -65,10 +64,10 @@ cleanupOnStart()
 -- Performance constants
 local DIST = 67690
 local DIST_SQ = DIST * DIST
-local DMG_TIMES = 15 -- Reduced from 20
-local FT_TIMES = 25 -- Reduced from 30
+local DMG_TIMES = 20
+local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.5"
+local version = "7.51"
 
 -- USER TABLES
 local MAIN_USERS = {
@@ -115,9 +114,9 @@ local originalTargets = {
 }
 
 -- Global variables
-getgenv().TargetTable = getgenv().TargetTable or {}
-getgenv().PermanentTargets = getgenv().PermanentTargets or {}
-getgenv().spam_swing = getgenv().spam_swing or false
+getgenv().TargetTable = {}
+getgenv().PermanentTargets = {}
+getgenv().spam_swing = false
 
 -- Track target sources
 local targetSources = {} -- Track how each player was added to target list
@@ -135,7 +134,6 @@ local tempParts = {}
 local cachedTools = {}
 local toolTargetedPlayers = {} -- Players targeted for having too many tools
 local lastPlayerCountCheck = 0
-local lastToolCheck = 0
 
 -- Server hop function
 local function serverHop()
@@ -176,7 +174,7 @@ end
 -- Auto server hop check function
 local function checkPlayerCountForServerHop()
     local currentTime = tick()
-    if currentTime - lastPlayerCountCheck < 30 then return end -- Increased from 23.002
+    if currentTime - lastPlayerCountCheck < 23.002 then return end
     lastPlayerCountCheck = currentTime
     
     local playerCount = #Players:GetPlayers()
@@ -186,14 +184,10 @@ local function checkPlayerCountForServerHop()
     end
 end
 
--- Tool count check function (optimized)
+-- Tool count check function
 local function checkToolCount(player)
     if not player then return end
     if MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
-    
-    local currentTime = tick()
-    if currentTime - lastToolCheck < 5 then return end -- Rate limit tool checks
-    lastToolCheck = currentTime
     
     local toolCount = 0
     if player.Backpack then
@@ -360,13 +354,13 @@ local function killLoop(player, toolPart)
     task.spawn(function()
         local consecutiveFailures = 0
         
-        while killTrackers[player] and consecutiveFailures < 8 do -- Reduced from 10
+        while killTrackers[player] and consecutiveFailures < 10 do
             local localChar = LP.Character
             local targetChar = player.Character
             
             if not (localChar and targetChar) then 
                 consecutiveFailures = consecutiveFailures + 1
-                task.wait(0.15) -- Slightly increased wait time
+                task.wait(0.1)
                 continue 
             end
             
@@ -376,15 +370,15 @@ local function killLoop(player, toolPart)
             
             if not (tool and tool.Parent == localChar and toolPart.Parent and humanoid and humanoid.Health > 0 and rootPart) then
                 consecutiveFailures = consecutiveFailures + 1
-                task.wait(0.15)
+                task.wait(0.1)
                 continue
             end
             
             consecutiveFailures = 0
             
-            -- Reduced tool activations for better performance
+            -- Multiple tool activations (reduced from 8 to 5)
             task.spawn(function()
-                for _ = 1, 3 do -- Reduced from 5
+                for _ = 1, 5 do
                     pcall(function() tool:Activate() end)
                 end
             end)
@@ -402,8 +396,8 @@ local function killLoop(player, toolPart)
                 batchFireTouch(toolPart, tempParts)
             end
             
-            -- Slightly longer wait for stability
-            task.wait(0.05)
+            -- Consistent timing
+            RunService.Heartbeat:Wait()
         end
         killTrackers[player] = nil
     end)
@@ -421,9 +415,9 @@ local function handleCombat(toolPart, player)
     
     if not (humanoid and rootPart and humanoid.Health > 0) then return end
     
-    -- Reduced tool activations for better performance
+    -- Enhanced tool activations
     task.spawn(function()
-        for _ = 1, 5 do -- Reduced from 8
+        for _ = 1, 8 do
             pcall(function() 
                 toolPart.Parent:Activate()
             end)
@@ -453,12 +447,7 @@ end
 
 -- Enhanced heartbeat combat function
 local localPosition
-local heartbeatCounter = 0
 local function onHeartbeat()
-    heartbeatCounter = heartbeatCounter + 1
-    -- Process every 2nd heartbeat for better performance
-    if heartbeatCounter % 2 ~= 0 then return end
-    
     local char = LP.Character
     if not char then return end
     
@@ -508,7 +497,7 @@ local function onHeartbeat()
                     for tool, handle in pairs(cachedTools) do
                         if tool.Parent == char and handle.Parent then
                             task.spawn(function()
-                                handleCombat(handle, player)
+                                handleCombat(handle, target)
                             end)
                         end
                     end
@@ -545,7 +534,7 @@ local function teleportLoop()
     end
 end
 
--- FIXED CHAT COMMAND PROCESSING WITH CONFLICT RESOLUTION
+-- FIXED CHAT COMMAND PROCESSING WITH ANTI-CONFLICT
 local function processChatCommand(messageText, sender)
     -- Only process if sender is authorized
     if not (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then return end
@@ -583,7 +572,7 @@ local function processChatCommand(messageText, sender)
     local commandKey = sender.Name .. "_" .. command .. "_" .. (args[2] or "")
     
     -- Cooldown check to prevent spam
-    if COMMAND_COOLDOWN[commandKey] and currentTime - COMMAND_COOLDOWN[commandKey] < 2 then
+    if COMMAND_COOLDOWN[commandKey] and currentTime - COMMAND_COOLDOWN[commandKey] < 1.5 then
         return
     end
     
@@ -592,9 +581,9 @@ local function processChatCommand(messageText, sender)
     for i = 1, #LP.Name do
         hash = hash + LP.Name:byte(i)
     end
-    local shouldHandle = (hash + currentTime) % 3 < 1.5 -- Roughly 50% chance, but consistent per instance
+    local shouldHandle = (hash % 2) == (tick() % 2 < 1 and 0 or 1)
     
-    -- For critical commands, always handle if we're a main user
+    -- For main users, always handle
     if MAIN_USERS[LP.Name] then
         shouldHandle = true
     end
@@ -602,10 +591,9 @@ local function processChatCommand(messageText, sender)
     if not shouldHandle then return end
     
     COMMAND_COOLDOWN[commandKey] = currentTime
-    LAST_COMMAND_TIME = currentTime
     
     -- Add small random delay to prevent exact simultaneous execution
-    task.wait(math.random(1, 50) / 1000)
+    task.wait(math.random(1, 30) / 1000)
     
     -- Prepare webhook message
     local webhookMessage = "```[" .. INSTANCE_ID .. "] " .. sender.Name .. " used command: " .. command
@@ -708,9 +696,6 @@ local function setupChatCommandHandler()
         if player == LP then return end
         
         local connection = player.Chatted:Connect(function(message)
-            -- Add small delay based on instance to prevent conflicts
-            local delay = (tonumber(INSTANCE_ID:sub(-1)) or 1) * 0.1
-            task.wait(delay)
             processChatCommand(message, player)
         end)
         chatConnections[#chatConnections + 1] = connection
@@ -737,8 +722,6 @@ local function setupChatCommandHandler()
                             local userId = message.TextSource.UserId
                             local sender = Players:GetPlayerByUserId(userId)
                             if sender and sender ~= LP then
-                                local delay = (tonumber(INSTANCE_ID:sub(-1)) or 1) * 0.1
-                                task.wait(delay)
                                 processChatCommand(message.Text, sender)
                             end
                         end
@@ -759,8 +742,6 @@ local function setupChatCommandHandler()
                     if messageData and messageData.FromSpeaker and messageData.Message then
                         local sender = Players:FindFirstChild(messageData.FromSpeaker)
                         if sender then
-                            local delay = (tonumber(INSTANCE_ID:sub(-1)) or 1) * 0.1
-                            task.wait(delay)
                             processChatCommand(messageData.Message, sender)
                         end
                     end
@@ -843,7 +824,7 @@ for userName in pairs(ALWAYS_KILL) do
     end
 end
 
--- Player management with conflict resolution
+-- Player management
 Players.PlayerAdded:Connect(function(player)
     playerList[#playerList + 1] = player
     if ALWAYS_KILL[player.Name] then
@@ -854,16 +835,13 @@ Players.PlayerAdded:Connect(function(player)
         addTargetToLoop(player, targetSources[player.Name] or TARGET_SOURCE_MANUAL)
     end
     
-    -- Check tool count for new players with delay
-    task.spawn(function()
-        if player.Character then
-            task.wait(3) -- Wait for tools to load
-            checkToolCount(player)
-        end
-        player.CharacterAdded:Connect(function()
-            task.wait(3) -- Wait for tools to load
-            checkToolCount(player)
-        end)
+    -- Check tool count for new players
+    if player.Character then
+        checkToolCount(player)
+    end
+    player.CharacterAdded:Connect(function()
+        task.wait(2) -- Wait for tools to load
+        checkToolCount(player)
     end)
 end)
 
@@ -885,115 +863,65 @@ Players.PlayerRemoving:Connect(function(player)
     end
 end)
 
--- Character setup with enhanced error handling
+-- Character setup
 LP.CharacterAdded:Connect(function(character)
-    task.spawn(function()
-        local humanoid = character:WaitForChild("Humanoid", 10)
-        if not humanoid then return end
-        
-        -- Sword spam on death
-        humanoid.Died:Connect(function()
-            pcall(function()
-                swordSoundSpam(0.1)
-            end)
-        end)
-        
-        -- Sword spam + remove animations instantly on respawn
-        pcall(function()
-            removeAnimations(character)
-            swordSoundSpam(0.2)
-        end)
-        
-        setupCharacter(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    -- Sword spam on death
+    humanoid.Died:Connect(function()
+        swordSoundSpam(0.1)
     end)
+    -- Sword spam + remove animations instantly on respawn
+    task.spawn(function()
+        removeAnimations(character)
+        swordSoundSpam(0.2)
+    end)
+    setupCharacter(character)
 end)
 
 if LP.Character then
-    task.spawn(function()
-        local humanoid = LP.Character:WaitForChild("Humanoid", 10)
-        if humanoid then
-            -- Sword spam on death
-            humanoid.Died:Connect(function()
-                pcall(function()
-                    swordSoundSpam(0.1)
-                end)
-            end)
-            
-            -- Sword spam + remove animations instantly on respawn
-            pcall(function()
-                removeAnimations(LP.Character)
-                swordSoundSpam(0.2)
-            end)
-        end
-        
-        setupCharacter(LP.Character)
+    local humanoid = LP.Character:WaitForChild("Humanoid")
+    -- Sword spam on death
+    humanoid.Died:Connect(function()
+        swordSoundSpam(0.1)
     end)
+    -- Sword spam + remove animations instantly on respawn
+    task.spawn(function()
+        removeAnimations(LP.Character)
+        swordSoundSpam(0.2)
+    end)
+    setupCharacter(LP.Character)
 end
 
--- Main enhanced loops with performance optimization
-local heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
-table.insert(connections, heartbeatConnection)
+-- Main enhanced loops
+RunService.Heartbeat:Connect(onHeartbeat)
+RunService.Stepped:Connect(autoEquip)
+RunService.RenderStepped:Connect(teleportLoop)
 
-local steppedConnection = RunService.Stepped:Connect(function()
-    pcall(autoEquip)
-end)
-table.insert(connections, steppedConnection)
+-- Auto server hop check loop
+RunService.Heartbeat:Connect(checkPlayerCountForServerHop)
 
-local renderSteppedConnection = RunService.RenderStepped:Connect(function()
-    pcall(teleportLoop)
-end)
-table.insert(connections, renderSteppedConnection)
-
--- Auto server hop check loop (reduced frequency)
-local serverHopConnection = RunService.Heartbeat:Connect(function()
-    pcall(checkPlayerCountForServerHop)
-end)
-table.insert(connections, serverHopConnection)
-
--- Tool count monitoring loop (much less frequent)
-local toolCheckCounter = 0
-local toolCheckConnection = RunService.Heartbeat:Connect(function()
-    toolCheckCounter = toolCheckCounter + 1
-    if toolCheckCounter % 300 == 0 then -- Check every 300 heartbeats (~5 seconds)
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LP then
-                pcall(function()
-                    checkToolCount(player)
-                end)
-            end
+-- Tool count monitoring loop
+RunService.Heartbeat:Connect(function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LP then
+            checkToolCount(player)
         end
     end
 end)
-table.insert(connections, toolCheckConnection)
 
--- Spam swing loop with better performance
-local spamSwingConnection = RunService.Heartbeat:Connect(function()
+-- Spam swing loop
+RunService.Heartbeat:Connect(function()
     if getgenv().spam_swing and LP.Character and LP.Character:FindFirstChild("Sword") then
-        pcall(function()
-            LP.Character.Sword:Activate()
-        end)
+        LP.Character.Sword:Activate()
     end
 end)
-table.insert(connections, spamSwingConnection)
-
--- Cleanup function for disconnecting all connections
-local function cleanup()
-    for _, connection in pairs(connections) do
-        pcall(function() connection:Disconnect() end)
-    end
-    for _, connection in pairs(chatConnections) do
-        pcall(function() connection:Disconnect() end)
-    end
-    table.clear(connections)
-    table.clear(chatConnections)
-end
 
 -- Initialize systems
 updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
 
--- Status message
+
 local statusMsg = "ver" .. version .. " [" .. INSTANCE_ID .. "] - Multi-Instance Fix - Performance Optimized"
 print(statusMsg)
 
