@@ -71,7 +71,7 @@ local version = "7.62"
 
 -- DAMAGE TRACKING SETTINGS
 local damage_taking = true -- Enable/disable damage tracking for main users
-local local_damage = 80 -- Damage threshold before auto-loop
+local local_damage = 20 -- Damage threshold before auto-loop
 
 -- USER TABLES
 local MAIN_USERS = {
