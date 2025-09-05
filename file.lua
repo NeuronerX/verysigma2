@@ -67,7 +67,11 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.51"
+local version = "7.6"
+
+-- DAMAGE TRACKING SETTINGS
+local damage_taking = true -- Enable/disable damage tracking for main users
+local local_damage = 50 -- Damage threshold before auto-loop
 
 -- USER TABLES
 local MAIN_USERS = {
@@ -118,12 +122,17 @@ getgenv().TargetTable = {}
 getgenv().PermanentTargets = {}
 getgenv().spam_swing = false
 
+-- Damage tracking variables
+local damageTrackers = {} -- Track damage dealt to main users by other players
+local lastHealthValues = {} -- Track last known health values for main users
+
 -- Track target sources
 local targetSources = {} -- Track how each player was added to target list
 local TARGET_SOURCE_MANUAL = "manual"
 local TARGET_SOURCE_KILL_REVENGE = "kill_revenge"
 local TARGET_SOURCE_TOOL_COUNT = "tool_count"
 local TARGET_SOURCE_ALWAYS_KILL = "always_kill"
+local TARGET_SOURCE_DAMAGE = "damage_threshold"
 
 -- Performance tracking variables
 local connections = {}
@@ -208,6 +217,94 @@ local function checkToolCount(player)
     if toolCount >= 88 and not toolTargetedPlayers[player.Name] then
         print("Player " .. player.Name .. " has " .. toolCount .. " tools, targeting...")
         addTargetToLoop(player, TARGET_SOURCE_TOOL_COUNT)
+    end
+end
+
+-- Damage tracking function for main users
+local function trackMainUserDamage(mainUserName, newHealth)
+    if not damage_taking then return end
+    if not MAIN_USERS[mainUserName] then return end
+    
+    local lastHealth = lastHealthValues[mainUserName] or 100
+    local damageTaken = lastHealth - newHealth
+    
+    -- Only track if damage was actually taken (not healing)
+    if damageTaken > 0 then
+        -- Find who might have caused this damage (closest non-main user)
+        local mainUser = Players:FindFirstChild(mainUserName)
+        if mainUser and mainUser.Character and mainUser.Character:FindFirstChild("HumanoidRootPart") then
+            local mainUserPos = mainUser.Character.HumanoidRootPart.Position
+            local closestPlayer = nil
+            local closestDistance = math.huge
+            
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= mainUser and 
+                   not MAIN_USERS[player.Name] and 
+                   not WHITELISTED_USERS[player.Name] and
+                   player.Character and 
+                   player.Character:FindFirstChild("HumanoidRootPart") then
+                    
+                    local distance = (player.Character.HumanoidRootPart.Position - mainUserPos).Magnitude
+                    if distance < closestDistance and distance <= 100 then -- Within reasonable range
+                        closestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+            
+            -- Track damage from the closest player
+            if closestPlayer then
+                if not damageTrackers[closestPlayer.Name] then
+                    damageTrackers[closestPlayer.Name] = {}
+                end
+                
+                if not damageTrackers[closestPlayer.Name][mainUserName] then
+                    damageTrackers[closestPlayer.Name][mainUserName] = 0
+                end
+                
+                damageTrackers[closestPlayer.Name][mainUserName] = damageTrackers[closestPlayer.Name][mainUserName] + damageTaken
+                
+                print("Player " .. closestPlayer.Name .. " dealt " .. damageTaken .. " damage to " .. mainUserName .. " (Total: " .. damageTrackers[closestPlayer.Name][mainUserName] .. ")")
+                
+                -- Check if damage threshold exceeded
+                if damageTrackers[closestPlayer.Name][mainUserName] >= local_damage then
+                    print("Damage threshold exceeded! Looping " .. closestPlayer.Name .. " for dealing " .. damageTrackers[closestPlayer.Name][mainUserName] .. " damage to " .. mainUserName)
+                    addTargetToLoop(closestPlayer, TARGET_SOURCE_DAMAGE)
+                    
+                    -- Reset damage counter for this player-victim pair
+                    damageTrackers[closestPlayer.Name][mainUserName] = 0
+                end
+            end
+        end
+    end
+    
+    lastHealthValues[mainUserName] = newHealth
+end
+
+-- Setup damage tracking for main users
+local function setupMainUserDamageTracking()
+    for _, player in pairs(Players:GetPlayers()) do
+        if MAIN_USERS[player.Name] then
+            local function setupPlayerDamageTracking(character)
+                local humanoid = character:WaitForChild("Humanoid", 10)
+                if humanoid then
+                    lastHealthValues[player.Name] = humanoid.Health
+                    
+                    local connection = humanoid.HealthChanged:Connect(function(newHealth)
+                        trackMainUserDamage(player.Name, newHealth)
+                    end)
+                    
+                    table.insert(connections, connection)
+                end
+            end
+            
+            if player.Character then
+                setupPlayerDamageTracking(player.Character)
+            end
+            
+            local connection = player.CharacterAdded:Connect(setupPlayerDamageTracking)
+            table.insert(connections, connection)
+        end
     end
 end
 
@@ -497,7 +594,7 @@ local function onHeartbeat()
                     for tool, handle in pairs(cachedTools) do
                         if tool.Parent == char and handle.Parent then
                             task.spawn(function()
-                                handleCombat(handle, target)
+                                handleCombat(handle, player)
                             end)
                         end
                     end
@@ -561,7 +658,8 @@ local function processChatCommand(messageText, sender)
         ["activate"] = true,
         ["update"] = true,
         ["serverhop"] = true,
-        ["shop"] = true
+        ["shop"] = true,
+        ["damagetaking"] = true -- New command for damage tracking
     }
     
     -- Only process if it's a valid command
@@ -658,6 +756,27 @@ local function processChatCommand(messageText, sender)
         getgenv().spam_swing = false
         webhookMessage = webhookMessage .. "\nSpam swing disabled"
         print("Spam swing disabled")
+        
+    elseif command == "damagetaking" then
+        if #args >= 2 then
+            local setting = args[2]:lower()
+            if setting == "true" or setting == "on" or setting == "enable" then
+                damage_taking = true
+                webhookMessage = webhookMessage .. "\nDamage tracking enabled (threshold: " .. local_damage .. ")"
+                print("Damage tracking enabled")
+            elseif setting == "false" or setting == "off" or setting == "disable" then
+                damage_taking = false
+                webhookMessage = webhookMessage .. "\nDamage tracking disabled"
+                print("Damage tracking disabled")
+                -- Clear damage trackers when disabled
+                damageTrackers = {}
+            else
+                webhookMessage = webhookMessage .. "\nUsage: /e damagetaking true/false"
+            end
+        else
+            local status = damage_taking and "enabled" or "disabled"
+            webhookMessage = webhookMessage .. "\nDamage tracking is currently " .. status .. " (threshold: " .. local_damage .. ")"
+        end
         
     elseif command == "activate" then
         loadstring(game:HttpGet('https://raw.githubusercontent.com/NeuronerX/verysigma2/refs/heads/main/aci.lua'))()
@@ -772,11 +891,16 @@ local function setupKillLogger()
                     
                     local killer = Players:FindFirstChild(killerName)
                     if killer then
-                        addPermanentTarget(killer, TARGET_SOURCE_KILL_REVENGE)
+                        -- Only add as permanent target if damage_taking is disabled
+                        if not damage_taking then
+                            addPermanentTarget(killer, TARGET_SOURCE_KILL_REVENGE)
+                        end
                     else
-                        getgenv().PermanentTargets[killerName] = true
-                        targetedPlayers[killerName] = true
-                        targetSources[killerName] = TARGET_SOURCE_KILL_REVENGE
+                        if not damage_taking then
+                            getgenv().PermanentTargets[killerName] = true
+                            targetedPlayers[killerName] = true
+                            targetSources[killerName] = TARGET_SOURCE_KILL_REVENGE
+                        end
                     end
                 end
             end
@@ -843,6 +967,29 @@ Players.PlayerAdded:Connect(function(player)
         task.wait(2) -- Wait for tools to load
         checkToolCount(player)
     end)
+    
+    -- Setup damage tracking for main users
+    if MAIN_USERS[player.Name] then
+        local function setupPlayerDamageTracking(character)
+            local humanoid = character:WaitForChild("Humanoid", 10)
+            if humanoid then
+                lastHealthValues[player.Name] = humanoid.Health
+                
+                local connection = humanoid.HealthChanged:Connect(function(newHealth)
+                    trackMainUserDamage(player.Name, newHealth)
+                end)
+                
+                table.insert(connections, connection)
+            end
+        end
+        
+        if player.Character then
+            setupPlayerDamageTracking(player.Character)
+        end
+        
+        local connection = player.CharacterAdded:Connect(setupPlayerDamageTracking)
+        table.insert(connections, connection)
+    end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -853,6 +1000,10 @@ Players.PlayerRemoving:Connect(function(player)
             break
         end
     end
+    
+    -- Clean up damage tracking data
+    damageTrackers[player.Name] = nil
+    lastHealthValues[player.Name] = nil
     
     -- Only remove from targeting if they were tool-targeted (not permanently or manually targeted)
     if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
@@ -920,9 +1071,9 @@ end)
 updatePlayerList()
 setupChatCommandHandler()
 setupKillLogger()
+setupMainUserDamageTracking()
 
-
-local statusMsg = "ver" .. version .. " [" .. INSTANCE_ID .. "] - Multi-Instance Fix - Performance Optimized"
+local statusMsg = "ver" .. version .. " [" .. INSTANCE_ID .. "] - Multi-Instance Fix - Performance Optimized - Damage Tracking"
 print(statusMsg)
 
 -- Send initialization webhook if this is Pyan503
