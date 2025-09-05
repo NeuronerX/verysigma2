@@ -67,10 +67,10 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.64"
+local version = "8"
 
 -- DAMAGE TRACKING SETTINGS
-local damage_taking = false -- Enable/disable damage tracking for main users
+local damage_taking = true -- Enable/disable damage tracking for main users
 local local_damage = 1 -- Damage threshold before auto-loop
 
 -- USER TABLES
@@ -1011,6 +1011,7 @@ Players.PlayerRemoving:Connect(function(player)
     -- Clean up damage tracking data
     damageTrackers[player.Name] = nil
     lastHealthValues[player.Name] = nil
+    mainUserStates[player.Name] = nil
     
     -- Only remove from targeting if they were tool-targeted (not permanently or manually targeted)
     if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
