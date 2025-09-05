@@ -67,11 +67,11 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "7.61"
+local version = "7.62"
 
 -- DAMAGE TRACKING SETTINGS
 local damage_taking = true -- Enable/disable damage tracking for main users
-local local_damage = 50 -- Damage threshold before auto-loop
+local local_damage = 80 -- Damage threshold before auto-loop
 
 -- USER TABLES
 local MAIN_USERS = {
@@ -974,6 +974,13 @@ Players.PlayerAdded:Connect(function(player)
             local humanoid = character:WaitForChild("Humanoid", 10)
             if humanoid then
                 lastHealthValues[player.Name] = humanoid.Health
+                
+                -- Clear any existing damage trackers for this main user when they respawn
+                for attackerName in pairs(damageTrackers) do
+                    if damageTrackers[attackerName][player.Name] then
+                        damageTrackers[attackerName][player.Name] = 0
+                    end
+                end
                 
                 local connection = humanoid.HealthChanged:Connect(function(newHealth)
                     trackMainUserDamage(player.Name, newHealth)
