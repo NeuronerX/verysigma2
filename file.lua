@@ -70,7 +70,7 @@ local SWORD_NAME = "Sword"
 local version = "8"
 
 -- DAMAGE TRACKING SETTINGS
-local damage_taking = true -- Enable/disable damage tracking for main users
+local damage_taking = false -- Enable/disable damage tracking for main users
 local local_damage = 1 -- Damage threshold before auto-loop
 
 -- USER TABLES
