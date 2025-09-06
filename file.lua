@@ -98,6 +98,7 @@ local ALWAYS_KILL = {
     ["sigmaboy123"] = true,
     ["josko730"] = true,
     ["GoatReflex"] = true,
+    ["skkssjsndndn"] = true,
 }
 
 local WHITELISTED_USERS = {
