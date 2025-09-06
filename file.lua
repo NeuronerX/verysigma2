@@ -7,6 +7,35 @@ local HttpService = game:GetService("HttpService")
 local LP = Players.LocalPlayer
 local PlaceId = game.PlaceId
 local JobId = game.JobId
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local GC = getconnections or get_signal_cons
+
+if GC then
+    for _, v in pairs(GC(LocalPlayer.Idled)) do
+        if v.Disable then
+            v:Disable()
+        elseif v.Disconnect then
+            v:Disconnect()
+        end
+    end
+else
+    local VirtualUser = cloneref(game:GetService("VirtualUser"))
+    LocalPlayer.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+end
+
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+
+-- Connect to the Idled event
+Players.LocalPlayer.Idled:Connect(function()
+    -- Simulate a harmless input to prevent AFK kick
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(0,0))
+end)
 
 task.wait(1)
 
