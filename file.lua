@@ -96,7 +96,7 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "8.1.1"
+local version = "8.1"
 
 -- DAMAGE TRACKING SETTINGS
 local damage_taking = false -- Enable/disable damage tracking for main users
