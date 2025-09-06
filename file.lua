@@ -96,7 +96,7 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "8"
+local version = "8.1"
 
 -- DAMAGE TRACKING SETTINGS
 local damage_taking = false -- Enable/disable damage tracking for main users
@@ -174,38 +174,54 @@ local cachedTools = {}
 local toolTargetedPlayers = {} -- Players targeted for having too many tools
 local lastPlayerCountCheck = 0
 
--- Server hop function
+-- FIXED Server hop function
 local function serverHop()
     task.spawn(function()
-        local servers = {}
-        local success, req = pcall(function()
-            return game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
-        end)
-        
-        if not success then 
-            print("Serverhop failed: Couldn't get server list")
-            return 
-        end
-        
-        local success2, body = pcall(function()
-            return HttpService:JSONDecode(req)
-        end)
-        
-        if not success2 or not body or not body.data then 
-            print("Serverhop failed: Couldn't decode server list")
-            return 
-        end
-
-        for i, v in next, body.data do
-            if type(v) == "table" and tonumber(v.playing) and tonumber(v.maxPlayers) and v.playing < v.maxPlayers and v.id ~= JobId then
-                table.insert(servers, 1, v.id)
+        local success, result = pcall(function()
+            local httpRequest = (syn and syn.request) or http_request or request
+            if not httpRequest then
+                warn("No HTTP request function available")
+                return false
             end
-        end
-
-        if #servers > 0 then
-            TeleportService:TeleportToPlaceInstance(PlaceId, servers[math.random(1, #servers)], LP)
-        else
-            print("Serverhop failed: Couldn't find a server")
+            
+            local response = httpRequest({
+                Url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100",
+                Method = "GET"
+            })
+            
+            if response.StatusCode ~= 200 then
+                warn("HTTP request failed with status: " .. tostring(response.StatusCode))
+                return false
+            end
+            
+            local serverData = HttpService:JSONDecode(response.Body)
+            if not serverData or not serverData.data then
+                warn("Invalid server data received")
+                return false
+            end
+            
+            local validServers = {}
+            for _, server in pairs(serverData.data) do
+                if server.playing and server.maxPlayers and server.id and 
+                   server.playing < server.maxPlayers and 
+                   server.id ~= JobId then
+                    table.insert(validServers, server.id)
+                end
+            end
+            
+            if #validServers > 0 then
+                local targetServerId = validServers[math.random(1, #validServers)]
+                print("Attempting to teleport to server: " .. targetServerId)
+                TeleportService:TeleportToPlaceInstance(PlaceId, targetServerId, LP)
+                return true
+            else
+                warn("No valid servers found")
+                return false
+            end
+        end)
+        
+        if not success then
+            warn("Server hop failed: " .. tostring(result))
         end
     end)
 end
@@ -349,7 +365,7 @@ local function findPlayerByPartialName(partialName)
 end
 
 addTargetToLoop = function(player, source)
-    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
+    if not player or not player.Name or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     for _, target in pairs(getgenv().TargetTable) do
         if target == player then return end
@@ -366,7 +382,7 @@ addTargetToLoop = function(player, source)
 end
 
 local function removeTargetFromLoop(player)
-    if not player then return end
+    if not player or not player.Name then return end
     
     for i, target in ipairs(getgenv().TargetTable) do
         if target == player then
@@ -381,7 +397,7 @@ local function removeTargetFromLoop(player)
 end
 
 local function addPermanentTarget(player, source)
-    if not player or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
+    if not player or not player.Name or MAIN_USERS[player.Name] or WHITELISTED_USERS[player.Name] then return end
     
     getgenv().PermanentTargets[player.Name] = true
     addTargetToLoop(player, source or TARGET_SOURCE_KILL_REVENGE)
@@ -663,8 +679,8 @@ end
 
 -- FIXED CHAT COMMAND PROCESSING WITH ANTI-CONFLICT
 local function processChatCommand(messageText, sender)
-    -- Only process if sender is authorized
-    if not (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then return end
+    -- Only process if sender is authorized and has a valid name
+    if not sender or not sender.Name or not (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then return end
     
     -- Check if message starts with "/e "
     if messageText:sub(1, 3) ~= "/e " or #messageText <= 3 then return end
@@ -749,10 +765,12 @@ local function processChatCommand(messageText, sender)
                 
                 -- Clear all targets
                 for _, target in pairs(getgenv().TargetTable) do
-                    targetedPlayers[target.Name] = nil
-                    targetSources[target.Name] = nil
-                    toolTargetedPlayers[target.Name] = nil
-                    killTrackers[target] = nil
+                    if target and target.Name then
+                        targetedPlayers[target.Name] = nil
+                        targetSources[target.Name] = nil
+                        toolTargetedPlayers[target.Name] = nil
+                        killTrackers[target] = nil
+                    end
                 end
                 
                 getgenv().PermanentTargets = {}
@@ -1039,16 +1057,17 @@ Players.PlayerRemoving:Connect(function(player)
     end
     
     -- Clean up damage tracking data
-    damageTrackers[player.Name] = nil
-    lastHealthValues[player.Name] = nil
-    mainUserStates[player.Name] = nil
-    
-    -- Only remove from targeting if they were tool-targeted (not permanently or manually targeted)
-    if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
-        toolTargetedPlayers[player.Name] = nil
-        targetedPlayers[player.Name] = nil
-        targetSources[player.Name] = nil
-        removeTargetFromLoop(player)
+    if player.Name then
+        damageTrackers[player.Name] = nil
+        lastHealthValues[player.Name] = nil
+        
+        -- Only remove from targeting if they were tool-targeted (not permanently or manually targeted)
+        if toolTargetedPlayers[player.Name] and not getgenv().PermanentTargets[player.Name] then
+            toolTargetedPlayers[player.Name] = nil
+            targetedPlayers[player.Name] = nil
+            targetSources[player.Name] = nil
+            removeTargetFromLoop(player)
+        end
     end
 end)
 
@@ -1111,7 +1130,7 @@ setupChatCommandHandler()
 setupKillLogger()
 setupMainUserDamageTracking()
 
-local statusMsg = "ver" .. version .. " [" .. INSTANCE_ID .. "] - Multi-Instance Fix - Performance Optimized - Damage Tracking"
+local statusMsg = "ver" .. version .. " [" .. INSTANCE_ID .. "] - Fixed Server Hop & Nil Username Error"
 print(statusMsg)
 
 -- Send initialization webhook if this is Pyan503
