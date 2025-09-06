@@ -96,7 +96,7 @@ local DIST_SQ = DIST * DIST
 local DMG_TIMES = 20
 local FT_TIMES = 30
 local SWORD_NAME = "Sword"
-local version = "8.1"
+local version = "8.1.1"
 
 -- DAMAGE TRACKING SETTINGS
 local damage_taking = false -- Enable/disable damage tracking for main users
@@ -677,12 +677,12 @@ local function teleportLoop()
     end
 end
 
--- FIXED CHAT COMMAND PROCESSING WITH ANTI-CONFLICT
+-- FIXED CHAT COMMAND PROCESSING - ONLY /e COMMANDS
 local function processChatCommand(messageText, sender)
     -- Only process if sender is authorized and has a valid name
     if not sender or not sender.Name or not (MAIN_USERS[sender.Name] or SIGMA_USERS[sender.Name]) then return end
     
-    -- Check if message starts with "/e "
+    -- ONLY accept /e commands, ignore dot commands
     if messageText:sub(1, 3) ~= "/e " or #messageText <= 3 then return end
     
     local commandPart = messageText:sub(4) -- Remove "/e "
@@ -705,7 +705,7 @@ local function processChatCommand(messageText, sender)
         ["update"] = true,
         ["serverhop"] = true,
         ["shop"] = true,
-        ["damagetaking"] = true -- New command for damage tracking
+        ["damagetaking"] = true
     }
     
     -- Only process if it's a valid command
@@ -740,7 +740,7 @@ local function processChatCommand(messageText, sender)
     task.wait(math.random(1, 30) / 1000)
     
     -- Prepare webhook message
-    local webhookMessage = "```[" .. INSTANCE_ID .. "] " .. sender.Name .. " used command: " .. command
+    local webhookMessage = "```[" .. INSTANCE_ID .. "] " .. sender.Name .. " used command: /e " .. command
     if #args > 1 then
         webhookMessage = webhookMessage .. " " .. table.concat(args, " ", 2)
     end
